@@ -54,6 +54,14 @@ struct Pending {
 };
 static Pending s_pending[6];
 
+// DMs waiting for the peer's public key (2.7+ nodes reject channel-encrypted DMs)
+struct Held {
+    bool used;
+    uint32_t id, to, since_ms;
+    char text[201];
+};
+static Held s_held[4];
+
 // Recently seen (from,id) pairs
 static struct { uint32_t from, id; } s_seen[128];
 static uint8_t s_seen_pos = 0;
@@ -211,7 +219,7 @@ static bool decode_data(const uint8_t *buf, size_t len, DataMsg &d)
 }
 
 // Build, encrypt and queue a packet from us. Returns the packet id (0 on failure).
-static uint32_t send_data(uint32_t to, const DataMsg &d, bool want_ack, uint8_t hop_limit = 0xFF)
+static uint32_t send_data(uint32_t to, const DataMsg &d, bool want_ack, uint8_t hop_limit = 0xFF, uint32_t id = 0)
 {
     if (!s_radio_ok) return 0;
     uint8_t frame[MAX_LORA_LEN];
@@ -222,7 +230,7 @@ static uint32_t send_data(uint32_t to, const DataMsg &d, bool want_ack, uint8_t 
     Header h = {};
     h.to = to;
     h.from = s_our_num;
-    h.id = new_id();
+    h.id = id ? id : new_id();
     uint8_t hops = hop_limit == 0xFF ? settings.hop_limit : hop_limit;
     h.set_hops(hops, hops);
     if (want_ack) h.flags |= FLAG_WANT_ACK;
@@ -337,30 +345,64 @@ void send_telemetry()
     send_data(BROADCAST, d, false);
 }
 
+static uint32_t send_text_now(uint32_t to, const char *text, uint32_t id)
+{
+    DataMsg d;
+    d.portnum = PORT_TEXT;
+    d.payload = (const uint8_t *)text;
+    d.payload_len = strlen(text);
+    return send_data(to, d, true, 0xFF, id);
+}
+
 uint32_t send_text(uint32_t to, const char *text)
 {
     size_t n = strlen(text);
     if (n == 0 || n > 200) return 0;
-    DataMsg d;
-    d.portnum = PORT_TEXT;
-    d.payload = (const uint8_t *)text;
-    d.payload_len = n;
-    uint32_t id = send_data(to, d, true);
+    Node *peer = to != BROADCAST ? nodedb::find(to) : nullptr;
+    uint32_t id = 0;
+    if (to != BROADCAST && !(peer && peer->has_key)) {
+        // Hold until NodeInfo brings the key; ask for it now
+        for (auto &h : s_held) {
+            if (h.used) continue;
+            h.used = true;
+            h.id = id = new_id();
+            h.to = to;
+            h.since_ms = millis();
+            strlcpy(h.text, text, sizeof(h.text));
+            break;
+        }
+        send_nodeinfo(to, true);
+    } else {
+        id = send_text_now(to, text, 0);
+    }
     Message m = {};
     m.from = s_our_num;
     m.to = to;
     m.id = id;
     m.time = now_epoch();
     m.status = id ? MSG_QUEUED : MSG_FAILED;
-    Node *peer = to != BROADCAST ? nodedb::find(to) : nullptr;
-    m.pki = peer && peer->has_key;
+    m.pki = to != BROADCAST;
     strlcpy(m.text, text, sizeof(m.text));
     messages::add(m);
-    if (to != BROADCAST && !(peer && peer->has_key)) {
-        // 2.7+ nodes drop channel-encrypted DMs: ask for their key
-        send_nodeinfo(to, true);
-    }
     return id;
+}
+
+// Release held DMs once a key arrives; after 90 s send legacy for pre-2.5 peers
+static void service_held()
+{
+    for (auto &h : s_held) {
+        if (!h.used) continue;
+        Node *peer = nodedb::find(h.to);
+        bool has_key = peer && peer->has_key;
+        if (has_key || millis() - h.since_ms > 90000) {
+            h.used = false;
+            if (!send_text_now(h.to, h.text, h.id)) messages::set_status(h.id, MSG_FAILED);
+            if (!has_key) {
+                Message *m = messages::find_sent(h.id);
+                if (m) m->pki = false;
+            }
+        }
+    }
 }
 
 static void send_ack(const Header &orig, uint8_t error = 0)
@@ -672,6 +714,7 @@ void loop()
     if (!s_radio_ok) return;
     service_radio();
     service_retries();
+    service_held();
     service_periodic();
     nodedb::save_if_dirty();
     messages::save_if_dirty();
