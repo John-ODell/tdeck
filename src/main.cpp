@@ -8,6 +8,11 @@
 #include "hal/power.h"
 #include "ui/ui.h"
 #include "apps/apps.h"
+#include <LittleFS.h>
+#include "core/settings.h"
+#include "core/nodedb.h"
+#include "core/messages.h"
+#include "mesh/mesh.h"
 
 void setup()
 {
@@ -29,6 +34,11 @@ void setup()
     delay(200);
     Wire.begin(BOARD_I2C_SDA, BOARD_I2C_SCL);
 
+    if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) Serial.println("LittleFS mount failed");
+    settings_load();
+    nodedb::load();
+    messages::load();
+
     power_init();
     display_init();
     input_init();
@@ -37,12 +47,15 @@ void setup()
     ui_init();
 
     lv_timer_handler();
-    display_set_brightness(12);
+    display_set_brightness(settings.brightness);
+
+    if (!mesh::init()) ui_toast("LoRa radio not found");
 }
 
 void loop()
 {
     input_poll();
+    mesh::loop();
     ui_tick();
     lv_timer_handler();
     delay(2);
