@@ -10,11 +10,15 @@ static const App *s_current = nullptr;
 static lv_obj_t *s_screen, *s_status, *s_status_left, *s_status_right, *s_content;
 static lv_group_t *s_group = nullptr;
 static char s_extra[48] = "";
+static ui_key_hook_t s_app_hook = nullptr;
+
+void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
 static const int STATUS_H = 20;
 
 static bool key_hook(uint32_t key)
 {
+    if (s_app_hook && s_app_hook(key)) return true;
     if (key != LV_KEY_ESC) return false;
     if (s_current && s_current->on_back && s_current->on_back()) return true;
     if (s_current) { ui_go_home(); return true; }
@@ -116,6 +120,7 @@ void ui_open_app(const App *app)
 {
     if (s_current && s_current->close) s_current->close();
     s_current = app;
+    s_app_hook = nullptr;
     clear_content();
     new_group();
     app->open(s_content);
@@ -126,6 +131,7 @@ void ui_go_home()
 {
     if (s_current && s_current->close) s_current->close();
     s_current = nullptr;
+    s_app_hook = nullptr;
     build_launcher();
     ui_status_refresh();
 }
