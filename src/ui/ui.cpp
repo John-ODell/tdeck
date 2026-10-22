@@ -36,6 +36,7 @@ static void new_group()
 static void clear_content()
 {
     lv_obj_clean(s_content);
+    lv_obj_set_style_pad_all(s_content, 4, 0); // apps like Map change it
     lv_obj_scroll_to(s_content, 0, 0, LV_ANIM_OFF);
 }
 
