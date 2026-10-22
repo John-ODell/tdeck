@@ -41,4 +41,4 @@ static void tick()
     if (millis() - last > 1000) { last = millis(); refresh(); }
 }
 
-const App app_about = {"About", LV_SYMBOL_SETTINGS, open, nullptr, tick, nullptr};
+const App app_about = {"About", LV_SYMBOL_HOME, open, nullptr, tick, nullptr};
