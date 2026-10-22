@@ -25,3 +25,4 @@ struct Settings {
 extern Settings settings;
 void settings_load();
 void settings_save();
+void apply_timezone();   // TZ env from settings.tz_offset_min
