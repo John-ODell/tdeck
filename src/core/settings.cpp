@@ -50,3 +50,13 @@ void settings_save()
     p.putBytes("s", &settings, sizeof(Settings));
     p.end();
 }
+
+void apply_timezone()
+{
+    // POSIX TZ offsets are inverted: UTC-5 is "UTC5"
+    char tz[16];
+    int off = -settings.tz_offset_min;
+    snprintf(tz, sizeof(tz), "UTC%c%d:%02d", off < 0 ? '-' : '+', abs(off) / 60, abs(off) % 60);
+    setenv("TZ", tz, 1);
+    tzset();
+}

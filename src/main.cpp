@@ -13,6 +13,8 @@
 #include "core/nodedb.h"
 #include "core/messages.h"
 #include "mesh/mesh.h"
+#include "hal/gps.h"
+#include "core/storage.h"
 
 static void on_text(const Message &m)
 {
@@ -57,6 +59,7 @@ void setup()
 
     if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) Serial.println("LittleFS mount failed");
     settings_load();
+    apply_timezone();
     nodedb::load();
     messages::load();
 
@@ -66,6 +69,8 @@ void setup()
 
     ui_register_app(&app_chat);
     ui_register_app(&app_nodes);
+    ui_register_app(&app_map);
+    ui_register_app(&app_gps);
     ui_register_app(&app_about);
     ui_init();
 
@@ -74,12 +79,15 @@ void setup()
 
     if (!mesh::init()) ui_toast("LoRa radio not found");
     mesh::set_text_callback(on_text);
+    sd_mount();
+    gps_init();
 }
 
 void loop()
 {
     input_poll();
     mesh::loop();
+    gps_loop();
     update_unread();
     ui_tick();
     lv_timer_handler();

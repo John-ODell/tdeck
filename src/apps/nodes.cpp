@@ -18,6 +18,7 @@ static void action(lv_event_t *e)
     case 0: chat_open_peer(s_selected); return;
     case 1: mesh::send_position(s_selected); ui_toast("Position requested"); break;
     case 2: mesh::send_nodeinfo(s_selected, true); ui_toast("Node info requested"); break;
+    case 3: map_center_on(s_selected); return;
     }
 }
 
@@ -60,8 +61,9 @@ static void show_detail(uint32_t num)
     lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    const char *labels[] = {LV_SYMBOL_ENVELOPE " DM", LV_SYMBOL_GPS " Pos?", LV_SYMBOL_REFRESH " Info?"};
-    for (int i = 0; i < 3; i++) {
+    const char *labels[] = {LV_SYMBOL_ENVELOPE " DM", LV_SYMBOL_GPS " Pos?", LV_SYMBOL_REFRESH " Info?", LV_SYMBOL_IMAGE " Map"};
+    for (int i = 0; i < 4; i++) {
+        if (i == 3 && !n->has_pos) continue;
         lv_obj_t *b = lv_btn_create(row);
         lv_obj_set_style_bg_color(b, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
         lv_obj_t *bl = lv_label_create(b);
