@@ -14,7 +14,10 @@ namespace mesh {
 
 using namespace mt;
 
-static SX1262 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
+// Created in init(): RadioLib's constructor uses the FPU, which is not safe in a
+// global constructor before the scheduler starts (panics under QEMU).
+static SX1262 *s_radio = nullptr;
+#define radio (*s_radio)
 static bool s_radio_ok = false;
 static volatile bool s_irq = false;
 static bool s_transmitting = false;
@@ -695,6 +698,7 @@ static void service_periodic()
 
 bool init()
 {
+    if (!s_radio) s_radio = new SX1262(new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN));
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     s_our_num = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
@@ -705,6 +709,7 @@ bool init()
 
 void apply_settings()
 {
+    if (!s_radio) return;
     radio.standby();
     s_radio_ok = configure_radio();
 }

@@ -16,6 +16,7 @@ static const uint32_t MAGIC = 0x4D534731; // "MSG1"
 void load()
 {
     if (!s_ring) s_ring = (Message *)ps_calloc(CAPACITY, sizeof(Message));
+    if (!s_ring) s_ring = (Message *)calloc(CAPACITY, sizeof(Message)); // no PSRAM
     s_start = s_count = 0;
     File f = LittleFS.open(PATH, "r");
     if (!f) return;
