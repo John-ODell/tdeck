@@ -721,6 +721,12 @@ void loop()
 }
 
 bool radio_ok() { return s_radio_ok; }
+
+void flush_storage()
+{
+    nodedb::save_now();
+    messages::save_now();
+}
 uint32_t our_num() { return s_our_num; }
 const Stats &stats() { return s_stats; }
 void set_text_callback(text_cb_t cb) { s_text_cb = cb; }

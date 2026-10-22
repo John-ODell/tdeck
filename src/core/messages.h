@@ -19,6 +19,7 @@ static const size_t CAPACITY = 300;
 
 void load();
 void save_if_dirty();
+void save_now();
 Message *add(const Message &m);
 size_t count();
 Message *at(size_t i);                  // 0 = oldest

@@ -9,6 +9,9 @@ static bool s_kb = false, s_touch = false;
 static lv_indev_t *s_keypad = nullptr, *s_pointer = nullptr;
 static uint32_t s_last_activity = 0;
 static input_key_hook_t s_hook = nullptr;
+static bool s_screen_off = false;
+
+void input_set_screen_off(bool off) { s_screen_off = off; }
 
 static volatile int16_t tb_up = 0, tb_down = 0, tb_left = 0, tb_right = 0;
 static void IRAM_ATTR isr_up() { tb_up++; }
@@ -22,6 +25,7 @@ static uint8_t q_head = 0, q_tail = 0;
 static void push_key(uint32_t k)
 {
     s_last_activity = millis();
+    if (s_screen_off) return;
     if (s_hook && s_hook(k)) return;
     uint8_t next = (q_tail + 1) % 16;
     if (next == q_head) return;
@@ -71,6 +75,7 @@ static void touch_read(lv_indev_drv_t *, lv_indev_data_t *data)
         data->point.x = x[0];
         data->point.y = y[0];
         s_last_activity = millis();
+        if (s_screen_off) data->state = LV_INDEV_STATE_REL;
     }
 }
 

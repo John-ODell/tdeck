@@ -29,6 +29,7 @@ static const size_t MAX_NODES = 120;
 void load();
 void save_if_dirty();       // debounced flash write
 void mark_dirty();
+void save_now();
 Node *find(uint32_t num);
 Node *get_or_create(uint32_t num);
 size_t count();

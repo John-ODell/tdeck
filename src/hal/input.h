@@ -14,3 +14,5 @@ void input_set_group(lv_group_t *g);
 // Raw key hook: return true to swallow the key before it reaches LVGL.
 typedef bool (*input_key_hook_t)(uint32_t key);
 void input_set_key_hook(input_key_hook_t hook);
+// While the screen is off, input only counts as activity (the waking key is dropped)
+void input_set_screen_off(bool off);
