@@ -1,1 +1,122 @@
 # tdeck
+
+A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, internal antenna). It is keyboard-first and talks to stock **Meshtastic** nodes on the default US LongFast channel. It isn't a fork of Meshtastic: the radio protocol is reimplemented from the published source (see [docs/research](docs/research/report.md)).
+
+> **Status: v0.1, not yet run on hardware.** It builds, the protocol math is unit-tested against known values and OpenSSL, and it boots in Espressif's QEMU without crashing. Everything that needs the real radio, screen or GPS is listed under [Not verified yet](#not-verified-yet).
+
+## Apps
+
+| App | What it does |
+|---|---|
+| **Chat** | `#LongFast` channel plus direct messages. Delivery status (… queued, ✓ sent, ✓✓ relayed/acked, ✕ failed). DMs are PKI-encrypted (X25519 + AES-256-CCM), which Meshtastic 2.7+ requires. A DM to a node whose key isn't known yet waits until its NodeInfo arrives. |
+| **Nodes** | Every node heard: name, last heard, hops, SNR/RSSI, battery, distance and bearing. Actions: DM, request position, request info, show on map. |
+| **Map** | Offline map from SD tiles in [Meshtastic MUI's layout](#map-tiles), or a distance grid without tiles. Shows you and every node with a position. |
+| **GPS** | Auto-detects the L76K (9600) or u-blox M10 (38400) module. Shows fix, sats, HDOP, position, altitude, speed and UTC. Sets the clock. Has a "share my position" toggle (off by default). |
+| **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
+| **BLE** | Scanner that flags item trackers (Apple Find My / AirTag, Tile, Samsung SmartTag, Google Find) and Meshtastic devices. |
+| **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
+| **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice. |
+| **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
+| **About** | Version, MAC, battery, memory, detected peripherals. |
+
+Mesh behaviour matches a Meshtastic `CLIENT`:
+- Relays other nodes' packets using the SNR-weighted contention window, and drops its relay if another node relays first.
+- Dedupes on (from, id).
+- ACKs DMs and retries its own up to 3 times.
+- Broadcasts NodeInfo (with its public key) at boot and every 3 h.
+- Sends battery telemetry every 30 min, and its position every 15 min if sharing is on.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| Trackball up / down | Move focus (scroll in Chat, Files viewer, Map) |
+| Trackball left / right | Adjust sliders and dropdowns, move the text cursor, pan the map |
+| Trackball click | Select / Enter |
+| Trackball **long click** | Back |
+| Keyboard | Type; Enter sends a message |
+| `Alt+B` | Keyboard backlight (handled by the keyboard itself) |
+| Map: `+` `-` `c` `n` | Zoom in / out, centre on me, jump to the next node |
+| Notes: `n` · Files: `d` `d` · WiFi/BLE: `r` | New note · delete · rescan |
+| Touch | Tap anything |
+
+The screen turns off after the timeout (default 1 min). The input that wakes it is swallowed, and an incoming message wakes it too.
+
+## Flash it
+
+You need [PlatformIO](https://platformio.org/) (`uv tool install platformio` or `pip install platformio`) and a USB-C **data** cable.
+
+```bash
+scripts/build_release.sh
+```
+
+```bash
+scripts/flash.sh
+```
+
+`build_release.sh` writes `release/tdeck-plus-<version>-merged.bin` (bootloader, partitions and app; flash at **0x0**) and an app-only `-app.bin` (0x10000, for Launcher/OTA). `flash.sh` flashes the newest merged image at 0x0 and refuses anything else. Writing a merged image at 0x10000 is a known way to brick a T-Deck.
+
+**If flashing can't connect** (common when Meshtastic or another firmware is running), enter download mode:
+1. Turn the T-Deck off (left-side switch).
+2. Hold the trackball down.
+3. Turn it on and keep holding for 2–3 s.
+4. Release. The screen stays black: that's download mode.
+5. Run `scripts/flash.sh`, then press reset or power-cycle.
+
+To name a port: `scripts/flash.sh release/<file>-merged.bin /dev/cu.usbmodem101`.
+
+**Going back to stock Meshtastic:** use [flasher.meshtastic.org](https://flasher.meshtastic.org/) with download mode as above. The LilyGO factory test images are in the [upstream repo](https://github.com/Xinyuan-LilyGO/T-Deck/tree/master/firmware).
+
+## Map tiles
+
+Copy 256 px PNG slippy tiles to the SD card (FAT32 or exFAT) as either:
+
+```
+/map/{z}/{x}/{y}.png
+/maps/<style>/{z}/{x}/{y}.png
+```
+
+This is the same layout Meshtastic MUI uses, so MUI tile packs work as-is. 8-bit palette PNGs decode fastest. Respect the tile provider's terms; OpenStreetMap's public tile servers forbid bulk downloads.
+
+## Build and test
+
+```bash
+~/.local/bin/pio run
+```
+
+```bash
+test/host/run.sh
+```
+
+```bash
+test/host/run_crypto.sh /path/to/mbedtls-v2.28.8
+```
+
+- `test/host/run.sh` checks the frequency slot (906.875 MHz), channel hash (0x08), nonce layout, header flags, protobuf codec, and AES-CTR against OpenSSL.
+- `test/host/run_crypto.sh` builds `src/mesh/crypto.cpp` against upstream mbedtls and checks X25519 against OpenSSL, plus the PKI round trip and tamper rejection. It needs an mbedtls 2.28 checkout ([Mbed-TLS/mbedtls](https://github.com/Mbed-TLS/mbedtls), tag `v2.28.8`).
+- `scripts/qemu_smoke.sh` boots the merged image in [Espressif QEMU](https://github.com/espressif/qemu/releases) for 45 s and fails on any panic.
+
+## Layout
+
+```
+src/board.h            pin map (from LilyGO utilities.h, cross-checked with Meshtastic's variant)
+src/hal/               display + backlight, keyboard/trackball/touch, battery, GPS
+src/mesh/              protocol constants, protobuf codec, crypto, router + radio
+src/core/              settings (NVS), node DB and message log (LittleFS), SD
+src/ui/                launcher, status bar, toasts, helpers
+src/apps/              one file per app
+lib/                   LilyGO's preconfigured TFT_eSPI and SensorLib (don't replace with registry copies)
+docs/research/         protocol, hardware and landscape research behind the design
+```
+
+## Not verified yet
+
+All of the following need a real device:
+
+- On-air interop with a stock Meshtastic node (channel text, NodeInfo, Position, relaying).
+- PKI DMs against a real node. X25519 matches OpenSSL; AES-CCM is only round-trip tested.
+- Display orientation and colours, touch mirroring, trackball direction and step size.
+- First-boot LittleFS format on the `spiffs` partition (QEMU can't emulate the flash writes).
+- GPS detection on both module variants, and map tile rendering speed.
+- Battery calibration: the ADC multiplier may need 2.11 instead of 2.0 (#5).
+- Meshtastic 2.8 XEdDSA signatures aren't implemented. 2.8 nodes are believed to accept unsigned packets by default.
