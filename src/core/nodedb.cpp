@@ -15,6 +15,7 @@ static const uint32_t MAGIC = 0x4E4F4431; // "NOD1"
 void load()
 {
     if (!s_nodes) s_nodes = (Node *)ps_calloc(MAX_NODES, sizeof(Node));
+    if (!s_nodes) s_nodes = (Node *)calloc(MAX_NODES, sizeof(Node)); // no PSRAM
     s_count = 0;
     File f = LittleFS.open(PATH, "r");
     if (!f) return;
