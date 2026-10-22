@@ -16,8 +16,12 @@
 #include "hal/gps.h"
 #include "core/storage.h"
 
+static uint32_t s_wake_at = 0;
+static bool s_screen_off = false;
+
 static void on_text(const Message &m)
 {
+    s_wake_at = millis();
     uint32_t peer = messages::peer_of(m, mesh::our_num());
     if (chat_viewing(peer)) return;
     char name[44], buf[120];
@@ -35,6 +39,24 @@ static void update_unread()
     char buf[24] = "";
     if (n) snprintf(buf, sizeof(buf), LV_SYMBOL_ENVELOPE " %u", (unsigned)n);
     ui_set_status_extra(buf);
+}
+
+// Backlight off after the idle timeout; any input or a new message wakes it
+static void manage_screen()
+{
+    uint32_t last = input_last_activity_ms();
+    if ((int32_t)(s_wake_at - last) > 0) last = s_wake_at;
+    if (s_screen_off) {
+        if (millis() - last < 1000) {
+            s_screen_off = false;
+            display_set_brightness(settings.brightness);
+            input_set_screen_off(false);
+        }
+    } else if (settings.screen_timeout_s && millis() - last > settings.screen_timeout_s * 1000UL) {
+        s_screen_off = true;
+        input_set_screen_off(true);
+        display_set_brightness(0);
+    }
 }
 
 void setup()
@@ -75,6 +97,7 @@ void setup()
     ui_register_app(&app_ble);
     ui_register_app(&app_notes);
     ui_register_app(&app_files);
+    ui_register_app(&app_settings);
     ui_register_app(&app_about);
     ui_init();
 
@@ -94,6 +117,7 @@ void loop()
     gps_loop();
     update_unread();
     ui_tick();
+    manage_screen();
     lv_timer_handler();
-    delay(2);
+    delay(s_screen_off ? 10 : 2);
 }

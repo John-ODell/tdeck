@@ -11,6 +11,7 @@ extern const App app_wifi;
 extern const App app_ble;
 extern const App app_notes;
 extern const App app_files;
+extern const App app_settings;
 
 // Cross-app navigation
 void chat_open_peer(uint32_t peer);

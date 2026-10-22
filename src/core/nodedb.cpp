@@ -38,6 +38,12 @@ void mark_dirty()
 void save_if_dirty()
 {
     if (!s_dirty || millis() - s_dirty_at < 30000) return;
+    save_now();
+}
+
+void save_now()
+{
+    if (!s_dirty) return;
     s_dirty = false;
     File f = LittleFS.open(PATH, "w");
     if (!f) return;

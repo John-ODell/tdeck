@@ -17,6 +17,7 @@ bool init();
 void loop();
 void apply_settings();               // re-tune radio after settings change
 bool radio_ok();
+void flush_storage();                // write node DB and messages now (before sleep)
 uint32_t our_num();
 const Stats &stats();
 
