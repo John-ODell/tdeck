@@ -9,6 +9,8 @@ extern const App app_gps;
 extern const App app_map;
 extern const App app_wifi;
 extern const App app_ble;
+extern const App app_notes;
+extern const App app_files;
 
 // Cross-app navigation
 void chat_open_peer(uint32_t peer);
