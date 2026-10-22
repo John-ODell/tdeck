@@ -14,6 +14,27 @@
 #include "core/messages.h"
 #include "mesh/mesh.h"
 
+static void on_text(const Message &m)
+{
+    uint32_t peer = messages::peer_of(m, mesh::our_num());
+    if (chat_viewing(peer)) return;
+    char name[44], buf[120];
+    nodedb::display_name(m.from, name, sizeof(name));
+    snprintf(buf, sizeof(buf), "%s%s: %s", peer == 0xFFFFFFFF ? "" : "DM ", name, m.text);
+    ui_toast(buf);
+}
+
+static void update_unread()
+{
+    static size_t last = (size_t)-1;
+    size_t n = messages::unread_count();
+    if (n == last) return;
+    last = n;
+    char buf[24] = "";
+    if (n) snprintf(buf, sizeof(buf), LV_SYMBOL_ENVELOPE " %u", (unsigned)n);
+    ui_set_status_extra(buf);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -43,6 +64,8 @@ void setup()
     display_init();
     input_init();
 
+    ui_register_app(&app_chat);
+    ui_register_app(&app_nodes);
     ui_register_app(&app_about);
     ui_init();
 
@@ -50,12 +73,14 @@ void setup()
     display_set_brightness(settings.brightness);
 
     if (!mesh::init()) ui_toast("LoRa radio not found");
+    mesh::set_text_callback(on_text);
 }
 
 void loop()
 {
     input_poll();
     mesh::loop();
+    update_unread();
     ui_tick();
     lv_timer_handler();
     delay(2);
