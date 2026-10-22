@@ -10,18 +10,44 @@ static TinyGPSPlus gps;
 static GpsState s = {};
 static HardwareSerial &port = Serial1;
 
-// Listen at a baud rate and report whether valid NMEA sentences arrive.
-static bool probe(uint32_t baud, uint32_t ms)
+// Baud probe runs from gps_loop(): listen at each rate until valid NMEA arrives.
+static const uint32_t PROBE_BAUD[] = {9600, 38400, 115200};
+static const uint32_t PROBE_MS[] = {1500, 1500, 1000};
+static int s_probe = 0;            // index into PROBE_BAUD, -1 when done
+static uint32_t s_probe_start = 0, s_probe_passed = 0;
+
+static void probe_start(int i)
 {
-    port.updateBaudRate(baud);
+    s_probe = i;
+    port.updateBaudRate(PROBE_BAUD[i]);
     while (port.available()) port.read();
-    uint32_t passed = gps.passedChecksum(), start = millis();
-    while (millis() - start < ms) {
-        while (port.available()) gps.encode(port.read());
-        if (gps.passedChecksum() > passed + 1) return true;
-        delay(5);
+    s_probe_start = millis();
+    s_probe_passed = gps.passedChecksum();
+}
+
+static void probe_found(int i)
+{
+    s_probe = -1;
+    s.baud = PROBE_BAUD[i];
+    if (i == 0) {
+        s.model = "L76K";
+        port.write("$PCAS04,5*1C\r\n"); // GPS + GLONASS
+        port.write("$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02\r\n"); // GGA + RMC only
+        port.write("$PCAS11,3*1E\r\n"); // portable mode
+    } else {
+        s.model = i == 1 ? "u-blox" : "unknown";
     }
-    return false;
+}
+
+static void probe_step()
+{
+    if (gps.passedChecksum() > s_probe_passed + 1) { probe_found(s_probe); return; }
+    if (millis() - s_probe_start < PROBE_MS[s_probe]) return;
+    if (s_probe + 1 < 3) { probe_start(s_probe + 1); return; }
+    // Nothing yet: a cold module can be silent for a while, keep listening at 9600
+    s_probe = -1;
+    port.updateBaudRate(9600);
+    s.baud = 9600;
 }
 
 void gps_init()
@@ -29,31 +55,13 @@ void gps_init()
     port.setRxBufferSize(1024);
     port.begin(9600, SERIAL_8N1, BOARD_GPS_RX_PIN, BOARD_GPS_TX_PIN);
     s.model = "none";
-    // L76K defaults to 9600; the u-blox M10 variant to 38400
-    if (probe(9600, 1500)) {
-        s.baud = 9600;
-        s.model = "L76K";
-        port.write("$PCAS04,5*1C\r\n"); // GPS + GLONASS
-        delay(50);
-        port.write("$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02\r\n"); // GGA + RMC only
-        delay(50);
-        port.write("$PCAS11,3*1E\r\n"); // vehicle/portable mode
-    } else if (probe(38400, 1500)) {
-        s.baud = 38400;
-        s.model = "u-blox";
-    } else if (probe(115200, 1000)) {
-        s.baud = 115200;
-        s.model = "unknown";
-    } else {
-        // Keep listening at 9600: a cold module can be silent for a while
-        port.updateBaudRate(9600);
-        s.baud = 9600;
-    }
+    probe_start(0);
 }
 
 void gps_loop()
 {
     while (port.available()) gps.encode(port.read());
+    if (s_probe >= 0) probe_step();
     s.chars = gps.charsProcessed();
     s.present = gps.passedChecksum() > 0;
     if (s.present && !strcmp(s.model, "none")) s.model = "unknown";
