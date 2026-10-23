@@ -43,6 +43,16 @@ static uint32_t map_kb(uint8_t c)
     }
 }
 
+// An open dropdown list takes up/down itself; PREV/NEXT would jump focus away and close it
+static uint32_t route_key(uint32_t k)
+{
+    if (k != LV_KEY_PREV && k != LV_KEY_NEXT) return k;
+    lv_group_t *g = s_keypad ? s_keypad->group : nullptr;
+    lv_obj_t *f = g ? lv_group_get_focused(g) : nullptr;
+    if (f && lv_obj_check_type(f, &lv_dropdown_class) && lv_dropdown_is_open(f)) return k == LV_KEY_PREV ? LV_KEY_UP : LV_KEY_DOWN;
+    return k;
+}
+
 static void keypad_read(lv_indev_drv_t *, lv_indev_data_t *data)
 {
     static bool pressed = false;
@@ -54,7 +64,7 @@ static void keypad_read(lv_indev_drv_t *, lv_indev_data_t *data)
         return;
     }
     if (q_head != q_tail) {
-        last = q[q_head];
+        last = route_key(q[q_head]);
         q_head = (q_head + 1) % 16;
         pressed = true;
         data->key = last;
