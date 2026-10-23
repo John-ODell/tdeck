@@ -1,4 +1,5 @@
 #include "display.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <lvgl.h>
@@ -72,5 +73,5 @@ void display_init()
     disp_drv.ver_res = SCREEN_H;
     disp_drv.flush_cb = disp_flush;
     disp_drv.draw_buf = &draw_buf;
-    lv_disp_drv_register(&disp_drv);
+    theme_init(lv_disp_drv_register(&disp_drv));
 }

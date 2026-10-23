@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -75,7 +76,7 @@ static void show_results()
             snprintf(line, sizeof(line), "%s%s%s\n%d dBm  %s", name.empty() ? "(no name)" : name.c_str(),
                      kind[0] ? "  - " : "", kind, d.getRSSI(), d.getAddress().toString().c_str());
             lv_obj_t *b = ui_list_btn(s_list, tracker ? LV_SYMBOL_WARNING : LV_SYMBOL_BLUETOOTH, line);
-            if (tracker) lv_obj_set_style_text_color(b, lv_color_hex(0xffb030), 0);
+            if (tracker) lv_obj_set_style_text_color(b, T_WARN, 0);
             lv_obj_add_event_cb(b, [](lv_event_t *) { start_scan(); }, LV_EVENT_CLICKED, nullptr);
         }
     }

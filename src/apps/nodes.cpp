@@ -65,7 +65,6 @@ static void show_detail(uint32_t num)
     for (int i = 0; i < 4; i++) {
         if (i == 3 && !n->has_pos) continue;
         lv_obj_t *b = lv_btn_create(row);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
         lv_obj_t *bl = lv_label_create(b);
         lv_label_set_text(bl, labels[i]);
         lv_obj_add_event_cb(b, action, LV_EVENT_CLICKED, (void *)(intptr_t)i);

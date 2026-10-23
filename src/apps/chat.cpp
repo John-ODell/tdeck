@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include <time.h>
 #include "core/messages.h"
@@ -80,10 +81,11 @@ static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
 
     lv_obj_t *bubble = lv_obj_create(row);
-    lv_obj_set_style_radius(bubble, 8, 0);
-    lv_obj_set_style_border_width(bubble, 0, 0);
+    lv_obj_set_style_radius(bubble, 2, 0);
+    lv_obj_set_style_border_width(bubble, 1, 0);
+    lv_obj_set_style_border_color(bubble, mine ? T_DIM : T_SURFACE_HI, 0);
     lv_obj_set_style_pad_all(bubble, 5, 0);
-    lv_obj_set_style_bg_color(bubble, lv_color_hex(mine ? 0x2f6fb5 : 0x2a313c), 0);
+    lv_obj_set_style_bg_color(bubble, mine ? T_SURFACE_HI : T_SURFACE, 0);
     lv_obj_set_size(bubble, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_max_width(bubble, 250, 0);
     lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
@@ -107,7 +109,7 @@ static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
     lv_obj_t *ml = lv_label_create(bubble);
     lv_label_set_text(ml, meta);
     lv_obj_set_style_text_font(ml, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(ml, lv_color_hex(0xaab4c0), 0);
+    lv_obj_set_style_text_color(ml, T_DIM, 0);
 
     lv_obj_t *tl = lv_label_create(bubble);
     lv_label_set_long_mode(tl, LV_LABEL_LONG_WRAP);
@@ -171,7 +173,7 @@ static void show_thread(uint32_t peer)
         Node *n = nodedb::find(peer);
         lv_label_set_text_fmt(title, "DM %s%s", name, n && n->has_key ? "  " LV_SYMBOL_EYE_CLOSE : "  (no key yet)");
     }
-    lv_obj_set_style_text_color(title, lv_color_hex(0x7fb2f0), 0);
+    lv_obj_set_style_text_color(title, T_ACCENT, 0);
 
     s_list = lv_obj_create(s_root);
     lv_obj_set_style_border_width(s_list, 0, 0);

@@ -3,6 +3,7 @@
 #include <time.h>
 #include "hal/input.h"
 #include "hal/power.h"
+#include "theme.h"
 
 static const App *s_apps[24];
 static int s_app_count = 0;
@@ -61,10 +62,6 @@ static void build_launcher()
     for (int i = 0; i < s_app_count; i++) {
         lv_obj_t *btn = lv_btn_create(grid);
         lv_obj_set_size(btn, 92, 62);
-        lv_obj_set_style_radius(btn, 10, 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x1f2a36), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_width(btn, 0, LV_STATE_FOCUS_KEY);
         lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_all(btn, 2, 0);
@@ -84,13 +81,15 @@ static void build_launcher()
 void ui_init()
 {
     s_screen = lv_scr_act();
-    lv_obj_set_style_bg_color(s_screen, lv_color_hex(0x0d1117), 0);
 
     s_status = lv_obj_create(s_screen);
     lv_obj_remove_style_all(s_status);
     lv_obj_set_size(s_status, LV_PCT(100), STATUS_H);
-    lv_obj_set_style_bg_color(s_status, lv_color_hex(0x161b22), 0);
+    lv_obj_set_style_bg_color(s_status, T_SURFACE, 0);
     lv_obj_set_style_bg_opa(s_status, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_side(s_status, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(s_status, T_DIM, 0);
+    lv_obj_set_style_border_width(s_status, 1, 0);
     lv_obj_set_style_pad_hor(s_status, 6, 0);
     lv_obj_clear_flag(s_status, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -110,6 +109,7 @@ void ui_init()
     input_set_key_hook(key_hook);
     ui_status_refresh();
     build_launcher();
+    theme_rain_splash(1500);
 }
 
 void ui_register_app(const App *app)
@@ -181,10 +181,12 @@ void ui_toast(const char *text)
     lv_label_set_text(box, text);
     lv_label_set_long_mode(box, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(box, 280);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0x2f7dd1), 0);
+    lv_obj_set_style_bg_color(box, T_SURFACE_HI, 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(box, T_ACCENT, 0);
+    lv_obj_set_style_border_width(box, 1, 0);
     lv_obj_set_style_pad_all(box, 8, 0);
-    lv_obj_set_style_radius(box, 8, 0);
+    lv_obj_set_style_radius(box, 2, 0);
     lv_obj_align(box, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_del_delayed(box, 2500);
 }
@@ -192,7 +194,6 @@ void ui_toast(const char *text)
 lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text)
 {
     lv_obj_t *btn = lv_list_add_btn(list, symbol, text);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
     lv_group_add_obj(ui_group(), btn);
     return btn;
 }
