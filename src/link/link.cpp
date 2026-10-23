@@ -25,6 +25,15 @@ static uint32_t s_pair_at = 0;
 static volatile bool s_pair_sent = false;
 static bool s_pair_keyed = false, s_pair_applied = false;
 
+// Blob packets are verified and reassembled in tick(), so the radio task only copies them
+struct Rx { uint8_t len; uint8_t data[250]; };
+static QueueHandle_t s_rxq = nullptr;
+static LinkReasm s_reasm;
+static blob_cb_t s_blob_cb = nullptr;
+static uint8_t s_blob_id = 0;
+static volatile int16_t s_ack_id = -1;   // last ACK seen: id, and whether it said ok
+static volatile bool s_ack_ok = false;
+
 // PAIR must leave unencrypted, so the peer only switches to the new key once it's sent
 static void on_sent(const uint8_t *mac, esp_now_send_status_t)
 {
@@ -70,6 +79,19 @@ static void on_recv(const uint8_t *mac, const uint8_t *data, int len)
     }
     if (link_hdr_ok(data, len, LINK_PONG, sizeof(LinkCtl))) {
         if (s_paired && !memcmp(mac, s_mac, 6) && link_tag_ok(s_lmk, data, offsetof(LinkCtl, tag))) s_last_pong = now;
+        return;
+    }
+    if (!s_paired || memcmp(mac, s_mac, 6)) return;
+    if (link_hdr_ok(data, len, LINK_ACK, sizeof(LinkAck))) {
+        const LinkAck *a = (const LinkAck *)data;
+        if (link_tag_ok(s_lmk, data, offsetof(LinkAck, tag))) { s_ack_ok = a->ok; s_ack_id = a->id; }
+        return;
+    }
+    if (link_blob_ok(data, len) && s_rxq) {
+        Rx r;
+        r.len = len;
+        memcpy(r.data, data, len);
+        xQueueSend(s_rxq, &r, 0);
     }
 }
 
@@ -101,6 +123,7 @@ bool start()
     esp_now_set_pmk(LINK_PMK);
     esp_now_register_recv_cb(on_recv);
     esp_now_register_send_cb(on_sent);
+    if (!s_rxq) s_rxq = xQueueCreate(8, sizeof(Rx));
     load();
     if (s_paired) add_peer(s_mac, s_lmk);
     s_last_pong = 0;
@@ -208,6 +231,21 @@ void tick()
         s_listen = false;
         Serial.println("[link] paired");
     }
+    // Complete blobs from the dongle, each answered with an ACK
+    Rx r;
+    while (s_rxq && xQueueReceive(s_rxq, &r, 0) == pdTRUE) {
+        if (!link_tag_ok(s_lmk, r.data, r.len - LINK_TAG_LEN)) continue;
+        const LinkBlob *b = (const LinkBlob *)r.data;
+        if (!s_reasm.feed(b)) continue;
+        LinkAck a;
+        link_hdr(&a.h, LINK_ACK);
+        a.id = b->id;
+        a.ok = 1;
+        link_tag(s_lmk, &a, offsetof(LinkAck, tag), a.tag);
+        esp_now_send(s_mac, (const uint8_t *)&a, sizeof(a));
+        if (s_blob_cb) s_blob_cb(s_reasm.kind, s_reasm.buf, s_reasm.len);
+        s_reasm.mask = 0;
+    }
     if (s_paired && millis() - s_last_ping > 1000) {
         s_last_ping = millis();
         LinkCtl c;
@@ -239,6 +277,38 @@ bool mouse(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel)
     m.wheel = wheel;
     link_tag(s_lmk, &m, offsetof(LinkMouse, tag), m.tag);
     return esp_now_send(s_mac, (const uint8_t *)&m, sizeof(m)) == ESP_OK;
+}
+
+void set_blob_cb(blob_cb_t cb) { s_blob_cb = cb; }
+
+bool send_blob(uint8_t kind, const void *data, size_t len, uint8_t *id_out)
+{
+    if (!s_running || !s_paired || len == 0 || len > LINK_BLOB_MAX * LINK_BLOB_PARTS) return false;
+    uint8_t id = ++s_blob_id;
+    uint8_t parts = (len + LINK_BLOB_MAX - 1) / LINK_BLOB_MAX;
+    for (uint8_t p = 0; p < parts; p++) {
+        LinkBlob b;
+        link_hdr(&b.h, LINK_BLOB);
+        b.kind = kind;
+        b.id = id;
+        b.part = p;
+        b.parts = parts;
+        size_t off = p * LINK_BLOB_MAX;
+        b.len = len - off > LINK_BLOB_MAX ? LINK_BLOB_MAX : len - off;
+        memcpy(b.data, (const uint8_t *)data + off, b.len);
+        link_tag(s_lmk, &b, offsetof(LinkBlob, data) + b.len, b.data + b.len);
+        if (esp_now_send(s_mac, (const uint8_t *)&b, link_blob_size(b.len)) != ESP_OK) return false;
+    }
+    if (id_out) *id_out = id;
+    return true;
+}
+
+bool take_ack(uint8_t id, bool *ok)
+{
+    if (s_ack_id != id) return false;
+    *ok = s_ack_ok;
+    s_ack_id = -1;
+    return true;
 }
 
 } // namespace dongle

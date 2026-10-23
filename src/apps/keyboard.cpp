@@ -8,6 +8,7 @@
 #include "hal/input.h"
 #include "hal/power.h"
 #include "link/link.h"
+#include "link/companion.h"
 #include "core/hid_keys.h"
 
 enum Target { T_BLUETOOTH, T_DONGLE };
@@ -16,7 +17,7 @@ static Target s_target = T_BLUETOOTH;
 static Ball s_ball = B_MOUSE;
 
 static lv_obj_t *s_setup, *s_live, *s_pairv;
-static lv_obj_t *s_start_btn, *s_target_dd, *s_ball_dd, *s_status, *s_pair_btn, *s_forget_btn;
+static lv_obj_t *s_start_btn, *s_target_dd, *s_ball_dd, *s_relay_dd, *s_status, *s_pair_btn, *s_sync_btn, *s_forget_btn;
 static lv_obj_t *s_term, *s_term_box, *s_live_status, *s_pair_list, *s_pair_note;
 static bool s_in_live = false, s_in_pair = false, s_pairing = false;
 static char s_echo[512];
@@ -51,7 +52,7 @@ static bool out_ready() { return s_target == T_BLUETOOTH ? hid_ble::connected() 
 static void apply_target()
 {
     if (s_target == T_BLUETOOTH) {
-        dongle::stop();
+        if (!companion::enabled()) dongle::stop(); // the relay keeps the link up in the background
         hid_ble::start();
         hid_ble::set_battery(power_battery_percent());
     } else {
@@ -235,6 +236,11 @@ static void build_setup(lv_obj_t *parent)
         s_ball = (Ball)lv_dropdown_get_selected(s_ball_dd);
         save_prefs();
     });
+    // Mesh relay: chat goes to the dongle's serial port and back, even with this app closed
+    s_relay_dd = dropdown_row(s_setup, "Mesh", "Off\nTo dongle", companion::enabled(), [](lv_event_t *) {
+        companion::set_enabled(lv_dropdown_get_selected(s_relay_dd) == 1);
+        if (companion::enabled() && s_target == T_DONGLE) dongle::start();
+    });
     s_status = lv_label_create(s_setup);
     lv_label_set_long_mode(s_status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_status, LV_PCT(100));
@@ -242,6 +248,9 @@ static void build_setup(lv_obj_t *parent)
     lv_obj_set_style_text_color(s_status, T_DIM, 0);
     s_start_btn = button(s_setup, LV_SYMBOL_KEYBOARD " Start typing", [](lv_event_t *) { enter_live(); });
     s_pair_btn = button(s_setup, LV_SYMBOL_USB " Pair a dongle", [](lv_event_t *) { enter_pair(); });
+    s_sync_btn = button(s_setup, LV_SYMBOL_UPLOAD " Sync notes to dongle", [](lv_event_t *) {
+        if (!companion::sync_notes()) ui_toast("Dongle is not online");
+    });
     s_forget_btn = button(s_setup, LV_SYMBOL_TRASH " Forget", [](lv_event_t *) {
         if (s_target == T_BLUETOOTH) { hid_ble::forget_hosts(); ui_toast("Bluetooth hosts forgotten"); }
         else { dongle::forget(); ui_toast("Dongle forgotten"); }
@@ -349,12 +358,14 @@ static void update_status()
     } else {
         uint8_t m[6];
         dongle::peer_mac(m);
-        snprintf(buf, sizeof(buf), LV_SYMBOL_USB " Dongle %02x:%02x:%02x %s", m[3], m[4], m[5],
-                 dongle::online() ? "online." : "offline: is it plugged in?");
+        snprintf(buf, sizeof(buf), LV_SYMBOL_USB " Dongle %02x:%02x:%02x %s %s", m[3], m[4], m[5],
+                 dongle::online() ? "online." : "offline: is it plugged in?", companion::status());
     }
     lv_label_set_text(s_status, buf);
-    if (s_target == T_DONGLE) lv_obj_clear_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN);
+    for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) {
+        if (s_target == T_DONGLE) lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+    }
     lv_label_set_text(lv_obj_get_child(s_forget_btn, 0),
                       s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH " Forget hosts" : LV_SYMBOL_TRASH " Forget dongle");
     lv_label_set_text_fmt(s_live_status, "%s %s   hold trackball to stop",
@@ -412,7 +423,7 @@ static void close()
     input_set_trackball_mode(TB_FOCUS);
     dongle::pair_listen(false);
     hid_ble::stop();
-    dongle::stop();
+    if (!companion::enabled()) dongle::stop();
 }
 
 const App app_keyboard = {"Keyboard", LV_SYMBOL_KEYBOARD, open, close, tick, nullptr};
