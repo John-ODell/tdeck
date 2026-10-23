@@ -5,7 +5,8 @@ is a USB keyboard and mouse that types what the T-Deck's **Keyboard** app sends.
 
 ```bash
 cd dongle
-pio run -e s3 -t upload    # ESP32-S3 boards
+pio run -e geek -t upload  # Waveshare ESP32-S3-GEEK (status on its screen)
+pio run -e s3 -t upload    # other ESP32-S3 boards (LilyGO T-Dongle S3, DevKitC...)
 pio run -e s2 -t upload    # ESP32-S2 boards (S2 Mini etc.)
 ```
 
@@ -19,6 +20,9 @@ If the board doesn't show up for flashing, hold BOOT while plugging it in.
 
 To pair it with another T-Deck, hold BOOT for 2 s. The old pairing stays until a new one
 is confirmed, and pairing mode gives up after 2 minutes if one already exists.
+
+On the GEEK the screen says which of these it is, shows the paired T-Deck's address, and
+while connected counts keys and shows the last few typed.
 
 | LED | Meaning |
 | --- | --- |
