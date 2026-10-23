@@ -15,6 +15,7 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 | **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
 | **BLE** | Scanner that flags item trackers (Apple Find My / AirTag, Tile, Samsung SmartTag, Google Find) and Meshtastic devices. |
 | **Spectrum** | Three waterfalls. **LoRa** sweeps 902–928 MHz in 160 steps (about 3 rows/s) with an auto noise floor; mesh traffic pauses while it runs. **WiFi** hops channels 1–13 in promiscuous mode and draws each channel's 22 MHz hump. **BLE** gives each nearby device a lane, with time scrolling right to left and trackers in amber. Click: next mode. `c`: matrix or SDR colours. Up/down: brightness (LoRa, WiFi) or pick a device (BLE). |
+| **Keyboard** | Use the T-Deck as a wireless keyboard and trackball mouse. **Bluetooth**: pair "T-Deck Keyboard" from a computer or phone (no PIN). **USB dongle**: an ESP32-S3/S2 running [`dongle/`](dongle/) plugs into the computer and types what the T-Deck sends over encrypted ESP-NOW. The trackball is a mouse (click = left button) or arrow keys. Long click stops typing. |
 | **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
 | **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice. |
 | **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
