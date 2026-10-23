@@ -151,7 +151,8 @@ static void send_ctl(const uint8_t mac[6], const uint8_t lmk[16], uint8_t type)
     LinkCtl c;
     link_hdr(&c.h, type);
     link_tag(lmk, &c, offsetof(LinkCtl, tag), c.tag);
-    esp_now_send(mac, (const uint8_t *)&c, sizeof(c));
+    esp_err_t e = esp_now_send(mac, (const uint8_t *)&c, sizeof(c));
+    if (e != ESP_OK) Serial.printf("[dongle] esp_now_send %d: %s\n", type, esp_err_to_name(e));
 }
 
 static void handle_pair(const Rx &r)
@@ -276,9 +277,9 @@ void setup()
 
 void loop()
 {
-    uint32_t now = millis();
     Rx r;
     while (xQueueReceive(s_rxq, &r, 0) == pdTRUE) handle(r);
+    uint32_t now = millis(); // after handle(): a PAIR just now must not look seconds old
 
     // BOOT held 2 s: pair again (the old pairing stays until a new one succeeds)
     static uint32_t boot_down = 0;
@@ -297,7 +298,8 @@ void loop()
         esp_now_send(BROADCAST, (const uint8_t *)&m, sizeof(m));
     }
     if (s_trial) {
-        if (s_paired_sends < 3 && now - s_paired_sent_at > 100) {
+        // Keep confirming until the T-Deck's first encrypted packet proves the key took
+        if (s_paired_sends < 16 && now - s_paired_sent_at > 250) {
             s_paired_sent_at = now;
             s_paired_sends++;
             send_ctl(s_trial_mac, s_trial_lmk, LINK_PAIRED);
