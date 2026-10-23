@@ -1,5 +1,6 @@
 #include "settings.h"
 #include <Arduino.h>
+#include <stddef.h>
 #include <Preferences.h>
 #include <esp_mac.h>
 #include "mesh/crypto.h"
@@ -25,6 +26,7 @@ static void defaults()
     settings.brightness = 12;
     settings.screen_timeout_s = 60;
     settings.tz_offset_min = -300;
+    settings.trackball = 3;
 }
 
 void settings_load()
@@ -32,9 +34,11 @@ void settings_load()
     defaults();
     Preferences p;
     p.begin("tdeck", true);
-    if (p.getUInt("ver", 0) == SETTINGS_VERSION && p.getBytesLength("s") == sizeof(Settings)) {
-        p.getBytes("s", &settings, sizeof(Settings));
+    size_t len = p.getBytesLength("s");
+    if (p.getUInt("ver", 0) == SETTINGS_VERSION && len >= offsetof(Settings, trackball) && len <= sizeof(Settings)) {
+        p.getBytes("s", &settings, len);
     }
+    if (settings.trackball < 1 || settings.trackball > 5) settings.trackball = 3;
     p.end();
     if (!settings.has_keys) {
         settings.has_keys = crypto::x25519_generate(settings.priv_key, settings.pub_key);

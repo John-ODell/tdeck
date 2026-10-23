@@ -8,7 +8,7 @@
 #include "hal/power.h"
 
 static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay;
-static lv_obj_t *s_prec, *s_bright, *s_timeout, *s_tz, *s_stats;
+static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
 static const char *TZ_OPTS = "Eastern\nCentral\nMountain\nPacific\nAlaska\nHawaii\nUTC";
@@ -88,6 +88,7 @@ static void save_clicked(lv_event_t *)
     settings.rebroadcast = lv_obj_has_state(s_relay, LV_STATE_CHECKED);
     settings.position_precision = PRECS[lv_dropdown_get_selected(s_prec)];
     settings.brightness = lv_slider_get_value(s_bright);
+    settings.trackball = lv_slider_get_value(s_tball);
     settings.screen_timeout_s = TIMEOUTS[lv_dropdown_get_selected(s_timeout)];
     settings.tz_offset_min = TZ_VALUES[lv_dropdown_get_selected(s_tz)];
     settings_save();
@@ -159,6 +160,17 @@ static void open(lv_obj_t *parent)
     lv_obj_add_event_cb(s_bright, [](lv_event_t *) { display_set_brightness(lv_slider_get_value(s_bright)); },
                         LV_EVENT_VALUE_CHANGED, nullptr);
     add_focus(s_bright);
+
+    r = row(col, "Trackball speed");
+    s_tball = lv_slider_create(r);
+    lv_slider_set_range(s_tball, 1, 5);
+    lv_slider_set_value(s_tball, settings.trackball, LV_ANIM_OFF);
+    lv_obj_set_width(s_tball, 150);
+    lv_obj_align(s_tball, LV_ALIGN_RIGHT_MID, 0, 0);
+    // Live, so the new speed can be felt before saving
+    lv_obj_add_event_cb(s_tball, [](lv_event_t *) { settings.trackball = lv_slider_get_value(s_tball); },
+                        LV_EVENT_VALUE_CHANGED, nullptr);
+    add_focus(s_tball);
 
     int to_idx = 2;
     for (int i = 0; i < 6; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
