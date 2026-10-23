@@ -9,6 +9,7 @@ static int s_app_count = 0;
 static const App *s_current = nullptr;
 static lv_obj_t *s_screen, *s_status, *s_status_left, *s_status_right, *s_content;
 static lv_group_t *s_group = nullptr;
+static lv_obj_t *s_grid = nullptr;
 static char s_extra[48] = "";
 static ui_key_hook_t s_app_hook = nullptr;
 
@@ -16,9 +17,31 @@ void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
 static const int STATUS_H = 20;
 
+// Launcher: left/right step one tile, up/down jump a whole row of the grid
+static bool launcher_nav(uint32_t key)
+{
+    if (!s_grid || (key != LV_KEY_LEFT && key != LV_KEY_RIGHT && key != LV_KEY_PREV && key != LV_KEY_NEXT)) return false;
+    int n = lv_obj_get_child_cnt(s_grid);
+    if (!n) return false;
+    lv_obj_t *f = lv_group_get_focused(s_group);
+    int i = f && lv_obj_get_parent(f) == s_grid ? lv_obj_get_index(f) : 0;
+    int cols = 1;
+    lv_coord_t y0 = lv_obj_get_y(lv_obj_get_child(s_grid, 0));
+    while (cols < n && lv_obj_get_y(lv_obj_get_child(s_grid, cols)) == y0) cols++;
+    switch (key) {
+    case LV_KEY_LEFT: i = (i + n - 1) % n; break;
+    case LV_KEY_RIGHT: i = (i + 1) % n; break;
+    case LV_KEY_PREV: i = i - cols >= 0 ? i - cols : i; break;
+    case LV_KEY_NEXT: i = i + cols < n ? i + cols : (i / cols < (n - 1) / cols ? n - 1 : i); break;
+    }
+    lv_group_focus_obj(lv_obj_get_child(s_grid, i));
+    return true;
+}
+
 static bool key_hook(uint32_t key)
 {
     if (s_app_hook && s_app_hook(key)) return true;
+    if (!s_current && launcher_nav(key)) return true;
     if (key != LV_KEY_ESC) return false;
     if (s_current && s_current->on_back && s_current->on_back()) return true;
     if (s_current) { ui_go_home(); return true; }
@@ -35,6 +58,7 @@ static void new_group()
 
 static void clear_content()
 {
+    s_grid = nullptr;
     lv_obj_clean(s_content);
     lv_obj_set_style_pad_all(s_content, 4, 0); // apps like Map change it
     lv_obj_scroll_to(s_content, 0, 0, LV_ANIM_OFF);
@@ -57,6 +81,7 @@ static void build_launcher()
     lv_obj_set_style_pad_row(grid, 8, 0);
     lv_obj_set_style_pad_top(grid, 6, 0);
     lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+    s_grid = grid;
 
     for (int i = 0; i < s_app_count; i++) {
         lv_obj_t *btn = lv_btn_create(grid);
