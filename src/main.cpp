@@ -15,6 +15,8 @@
 #include "mesh/mesh.h"
 #include "hal/gps.h"
 #include "core/storage.h"
+#include "core/console.h"
+#include "link/companion.h"
 
 static uint32_t s_wake_at = 0;
 void screen_wake() { s_wake_at = millis(); }
@@ -96,6 +98,8 @@ void setup()
     ui_register_app(&app_gps);
     ui_register_app(&app_wifi);
     ui_register_app(&app_ble);
+    ui_register_app(&app_spectrum);
+    ui_register_app(&app_keyboard);
     ui_register_app(&app_notes);
     ui_register_app(&app_timer);
     ui_register_app(&app_files);
@@ -110,6 +114,7 @@ void setup()
     mesh::set_text_callback(on_text);
     sd_mount();
     gps_init();
+    companion::init();
 }
 
 void loop()
@@ -118,7 +123,9 @@ void loop()
     mesh::loop();
     gps_loop();
     update_unread();
+    companion::tick();
     ui_tick();
+    console_poll();
     manage_screen();
     lv_timer_handler();
     delay(s_screen_off ? 10 : 2);

@@ -138,6 +138,13 @@ void ui_go_home()
 }
 
 const App *ui_current_app() { return s_current; }
+
+bool ui_open_app_named(const char *name)
+{
+    for (int i = 0; i < s_app_count; i++)
+        if (!strcasecmp(s_apps[i]->name, name)) { ui_open_app(s_apps[i]); return true; }
+    return false;
+}
 lv_group_t *ui_group() { return s_group; }
 
 void ui_set_status_extra(const char *text)

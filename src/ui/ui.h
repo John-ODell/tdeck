@@ -14,6 +14,7 @@ void ui_init();
 void ui_tick();
 void ui_register_app(const App *app);
 void ui_open_app(const App *app);
+bool ui_open_app_named(const char *name); // case-insensitive
 void ui_go_home();
 const App *ui_current_app();
 lv_group_t *ui_group();           // group for the open app: add focusable widgets here

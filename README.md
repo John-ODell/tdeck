@@ -14,9 +14,12 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 | **GPS** | Auto-detects the L76K (9600) or u-blox M10 (38400) module. Shows fix, sats, HDOP, position, altitude, speed and UTC. Sets the clock. Has a "share my position" toggle (off by default). |
 | **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
 | **BLE** | Scanner that flags item trackers (Apple Find My / AirTag, Tile, Samsung SmartTag, Google Find) and Meshtastic devices. |
+| **Spectrum** | Three waterfalls. **LoRa** sweeps 902–928 MHz in 160 steps (about 3 rows/s) with an auto noise floor; mesh traffic pauses while it runs. **WiFi** hops channels 1–13 in promiscuous mode and draws each channel's 22 MHz hump. **BLE** gives each nearby device a lane, with time scrolling right to left and trackers in amber. Click: next mode. `c`: matrix or SDR colours. Up/down: brightness (LoRa, WiFi) or pick a device (BLE). |
+| **Keyboard** | Use the T-Deck as a wireless keyboard and trackball mouse. **Bluetooth**: pair "T-Deck Keyboard" from a computer or phone (no PIN). **USB dongle**: an ESP32-S3/S2 running [`dongle/`](dongle/) plugs into the computer and types what the T-Deck sends over encrypted ESP-NOW. The trackball is a mouse (click = left button) or arrow keys. Long click stops typing. With **Mesh: To dongle** on, chat is relayed to the dongle's serial port as JSON and lines sent to it go out on the mesh (`tools/meshterm.py`), even with the app closed; **Sync notes to dongle** copies the notes to the GEEK's TF card, which the computer sees as a USB drive. |
 | **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
 | **Timer** | Stopwatch with laps and a countdown. Left/right switch; click starts and pauses; `l` lap, `r` reset; up/down set the countdown. Both keep running with the app closed, and the countdown rings the speaker and wakes the screen from any app. |
 | **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice. |
+| **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice; `p` pushes a file to the dongle's card. With a dongle paired, a **Dongle card** row opens the GEEK's TF card over the link: browse it, click a text file to read it, `g` pulls any file to `/dongle/` on the T-Deck. |
 | **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
 | **About** | Version, MAC, battery, memory, detected peripherals. |
 
@@ -78,6 +81,20 @@ Copy 256 px PNG slippy tiles to the SD card (FAT32 or exFAT) as either:
 ```
 
 This is the same layout Meshtastic MUI uses, so MUI tile packs work as-is. 8-bit palette PNGs decode fastest. Respect the tile provider's terms; OpenStreetMap's public tile servers forbid bulk downloads.
+
+## Serial console
+
+At 115200 baud, over the USB port, one command per line:
+
+| Command | Does |
+|---|---|
+| `open <app>` | Opens an app by name, e.g. `open Spectrum` |
+| `key <k>` | Injects a key: `enter`, `esc`, `up`, `down`, `left`, `right` or one character |
+| `home` | Back to the launcher |
+| `shot` | Screenshot: `SHOT <w> <h>`, base64 RGB565 little-endian lines, then `END` |
+| `rssi` | SX1262 instantaneous RSSI at several settle times (sweep diagnostics) |
+
+Output only arrives if the host opened the port before the device booted, so reset after connecting.
 
 ## Build and test
 
