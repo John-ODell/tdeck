@@ -15,6 +15,7 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 | **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
 | **BLE** | Scanner that flags item trackers (Apple Find My / AirTag, Tile, Samsung SmartTag, Google Find) and Meshtastic devices. |
 | **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
+| **Timer** | Stopwatch with laps and a countdown. Left/right switch; click starts and pauses; `l` lap, `r` reset; up/down set the countdown. Both keep running with the app closed, and the countdown rings the speaker and wakes the screen from any app. |
 | **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice. |
 | **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
 | **About** | Version, MAC, battery, memory, detected peripherals. |
