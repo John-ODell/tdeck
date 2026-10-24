@@ -89,7 +89,7 @@ static void show_list()
     int32_t mlat, mlon;
     bool have_me = mesh::own_position(&mlat, &mlon);
     char text[96], age[12];
-    lv_list_add_text(s_list, (String(nodedb::count()) + " nodes heard").c_str());
+    ui_list_text(s_list, (String(nodedb::count()) + " nodes heard").c_str());
     for (size_t i = 0; i < nodedb::count() && i < 80; i++) {
         Node *n = nodedb::at(i);
         fmt_age(n->last_heard, age, sizeof(age));

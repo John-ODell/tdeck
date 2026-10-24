@@ -61,7 +61,7 @@ static void show_results(int n)
         lv_obj_t *b = ui_list_btn(s_list, r > -60 ? LV_SYMBOL_WIFI : r > -75 ? LV_SYMBOL_WIFI : LV_SYMBOL_WARNING, line);
         lv_obj_add_event_cb(b, [](lv_event_t *) { start_scan(); }, LV_EVENT_CLICKED, nullptr);
     }
-    if (n == 0) lv_list_add_text(s_list, "Nothing found. Click to rescan.");
+    if (n == 0) ui_list_text(s_list, "Nothing found. Click to rescan.");
 }
 
 static bool keys(uint32_t k)

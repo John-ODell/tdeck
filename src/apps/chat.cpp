@@ -70,7 +70,7 @@ static void show_list()
         b = ui_list_btn(s_list, LV_SYMBOL_ENVELOPE, text);
         lv_obj_add_event_cb(b, conv_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)peers[i]);
     }
-    lv_list_add_text(s_list, "Start a DM from the Nodes app");
+    ui_list_text(s_list, "Start a DM from the Nodes app");
     s_seen_version = messages::version();
 }
 

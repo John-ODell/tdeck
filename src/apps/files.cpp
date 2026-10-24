@@ -101,13 +101,13 @@ static void show_dir(const String &dir)
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
     if (!sd_mount()) {
-        lv_list_add_text(list, "No SD card. Insert a FAT32/exFAT card and reopen.");
+        ui_list_text(list, "No SD card. Insert a FAT32/exFAT card and reopen.");
         return;
     }
     char a[16], b[16], hdr[96];
     snprintf(hdr, sizeof(hdr), "%s   %s used of %s   (d = delete)", dir.c_str(),
              fmt_size(sd_used_bytes(), a, sizeof(a)), fmt_size(sd_total_bytes(), b, sizeof(b)));
-    lv_list_add_text(list, hdr);
+    ui_list_text(list, hdr);
 
     s_entries.clear();
     File d = SD.open(dir);
@@ -134,7 +134,7 @@ static void show_dir(const String &dir)
         lv_obj_add_event_cb(btn, entry_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_obj_add_event_cb(btn, entry_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)i);
     }
-    if (s_entries.empty()) lv_list_add_text(list, "(empty)");
+    if (s_entries.empty()) ui_list_text(list, "(empty)");
 }
 
 static void open(lv_obj_t *parent)

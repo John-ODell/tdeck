@@ -26,4 +26,5 @@ typedef bool (*ui_key_hook_t)(uint32_t key);
 void ui_set_app_key_hook(ui_key_hook_t hook);
 
 // Shared styling helpers
-lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text);
+lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text); // row: wraps, never scrolls
+lv_obj_t *ui_list_text(lv_obj_t *list, const char *text);                    // header, same font
