@@ -333,6 +333,7 @@ static void show_now()
     lv_label_set_long_mode(s_sub, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(s_sub, 4, 100);
     s_time = lv_label_create(s_root);
+    lv_obj_set_style_text_font(s_time, &lv_font_montserrat_14, 0); // the theme's font is too wide for this line
     lv_obj_set_style_text_color(s_time, T_DIM, 0);
     lv_obj_set_pos(s_time, 4, 150);
     s_hint = lv_label_create(s_root);
