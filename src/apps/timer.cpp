@@ -140,6 +140,7 @@ static lv_obj_t *tab(lv_obj_t *parent, const char *text)
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(b, 2, 0);
     lv_obj_t *l = lv_label_create(b);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0); // the theme's font is too wide for two tabs
     lv_label_set_text(l, text);
     lv_obj_center(l);
     return b;
