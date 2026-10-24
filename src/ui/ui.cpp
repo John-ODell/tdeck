@@ -17,7 +17,8 @@ void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
 static const int STATUS_H = 20;
 
-// Launcher: left/right step one tile, up/down jump a whole row of the grid
+// Launcher: left/right step one tile, up/down jump a whole row of the grid. Nothing wraps,
+// so a long roll stops at the edge instead of landing on About.
 static bool launcher_nav(uint32_t key)
 {
     if (!s_grid || (key != LV_KEY_LEFT && key != LV_KEY_RIGHT && key != LV_KEY_PREV && key != LV_KEY_NEXT)) return false;
@@ -29,8 +30,8 @@ static bool launcher_nav(uint32_t key)
     lv_coord_t y0 = lv_obj_get_y(lv_obj_get_child(s_grid, 0));
     while (cols < n && lv_obj_get_y(lv_obj_get_child(s_grid, cols)) == y0) cols++;
     switch (key) {
-    case LV_KEY_LEFT: i = (i + n - 1) % n; break;
-    case LV_KEY_RIGHT: i = (i + 1) % n; break;
+    case LV_KEY_LEFT: i = i > 0 ? i - 1 : i; break;        // the ends stop, nothing wraps
+    case LV_KEY_RIGHT: i = i < n - 1 ? i + 1 : i; break;
     case LV_KEY_PREV: i = i - cols >= 0 ? i - cols : i; break;
     case LV_KEY_NEXT: i = i + cols < n ? i + cols : (i / cols < (n - 1) / cols ? n - 1 : i); break;
     }
