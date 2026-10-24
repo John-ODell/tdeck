@@ -14,6 +14,7 @@
 #include <AudioGeneratorMP3.h>
 #include <AudioGeneratorWAV.h>
 #include <AudioOutput.h>
+#include <AudioLogger.h>
 #include "core/storage.h"
 #include "hal/audio.h"
 #include "link/companion.h"
@@ -158,7 +159,9 @@ static bool play_track(int list, int index)
     s_artist = "";
     s_error[0] = 0;
     String path = p.dir + "/" + p.files[index];
+    audioLogger = &Serial;
     s_file = new AudioFileSourceSD(path.c_str());
+    Serial.printf("[music] play %s open=%d size=%lu\n", path.c_str(), s_file->isOpen(), (unsigned long)s_file->getSize());
     if (!s_file->isOpen()) { strlcpy(s_error, "can't open file", sizeof(s_error)); stop_track(); return false; }
     s_out = new AmpOutput();
     apply_volume();
@@ -174,6 +177,7 @@ static bool play_track(int list, int index)
         s_gen = new AudioGeneratorWAV();
     }
     if (!s_gen->begin(src, s_out)) { strlcpy(s_error, "can't decode", sizeof(s_error)); stop_track(); return false; }
+    Serial.println("[music] decoding");
     s_playing = true;
     return true;
 }
@@ -194,6 +198,7 @@ void music_loop()
     while (s_gen->isRunning() && millis() < until)
         if (!s_gen->loop()) break;
     if (!s_gen->isRunning()) {
+        Serial.printf("[music] track ended at %lu frames\n", (unsigned long)(s_out ? s_out->frames : 0));
         // Track over (or unreadable): on to the next one
         int list = s_list, index = s_index;
         stop_track();
