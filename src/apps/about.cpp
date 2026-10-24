@@ -32,6 +32,9 @@ static void refresh()
 static void open(lv_obj_t *parent)
 {
     s_label = lv_label_create(parent);
+    lv_obj_set_style_text_font(s_label, &lv_font_montserrat_14, 0); // the theme's mono font is too wide for these lines
+    lv_obj_set_width(s_label, LV_PCT(100));
+    lv_label_set_long_mode(s_label, LV_LABEL_LONG_WRAP);
     refresh();
 }
 
