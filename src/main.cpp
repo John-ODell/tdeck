@@ -102,6 +102,7 @@ void setup()
     ui_register_app(&app_keyboard);
     ui_register_app(&app_notes);
     ui_register_app(&app_timer);
+    ui_register_app(&app_music);
     ui_register_app(&app_files);
     ui_register_app(&app_settings);
     ui_register_app(&app_about);
@@ -124,6 +125,7 @@ void loop()
     gps_loop();
     update_unread();
     companion::tick();
+    music_loop();
     ui_tick();
     console_poll();
     manage_screen();
