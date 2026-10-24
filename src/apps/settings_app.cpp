@@ -54,6 +54,7 @@ static lv_obj_t *dropdown_row(lv_obj_t *parent, const char *label, const char *o
     lv_obj_t *dd = lv_dropdown_create(r);
     lv_dropdown_set_options(dd, opts);
     lv_dropdown_set_selected(dd, selected < 0 ? 0 : selected);
+    lv_obj_set_style_text_font(lv_dropdown_get_list(dd), &lv_font_montserrat_14, 0); // the list is not a child of the row
     lv_obj_set_width(dd, 150);
     lv_obj_align(dd, LV_ALIGN_RIGHT_MID, 0, 0);
     return add_focus(dd);
@@ -108,6 +109,8 @@ static void open(lv_obj_t *parent)
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_add_flag(col, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_right(col, 4, 0);
+    // Labels, fields, dropdowns and buttons inherit this: the theme's mono font is too wide for the rows
+    lv_obj_set_style_text_font(col, &lv_font_montserrat_14, 0);
 
     s_stats = lv_label_create(col);
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_12, 0);
