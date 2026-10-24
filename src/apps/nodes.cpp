@@ -70,6 +70,7 @@ static void show_detail(uint32_t num)
         lv_obj_t *b = lv_btn_create(row);
         lv_obj_set_style_bg_color(b, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
         lv_obj_t *bl = lv_label_create(b);
+        lv_obj_set_style_text_font(bl, &lv_font_montserrat_14, 0); // four buttons fit the row in this font
         lv_label_set_text(bl, labels[i]);
         lv_obj_add_event_cb(b, action, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_group_add_obj(ui_group(), b);
