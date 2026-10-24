@@ -11,7 +11,6 @@ static lv_obj_t *s_screen, *s_status, *s_status_left, *s_status_right, *s_conten
 static lv_group_t *s_group = nullptr;
 static char s_extra[48] = "";
 static ui_key_hook_t s_app_hook = nullptr;
-static uint32_t s_repaint_at = 0;   // full redraw due after a view change
 
 void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
@@ -120,8 +119,6 @@ void ui_register_app(const App *app)
 
 // The display and the SD card share one SPI bus, and the first frame of an app that reads
 // the card has been seen to reach the panel with a band missing (launcher tiles left over
-// where the list header belongs). A whole-screen repaint a moment later covers it.
-static void schedule_repaint() { s_repaint_at = millis() + 200; }
 
 void ui_open_app(const App *app)
 {
@@ -132,7 +129,6 @@ void ui_open_app(const App *app)
     new_group();
     app->open(s_content);
     ui_status_refresh();
-    schedule_repaint();
 }
 
 void ui_go_home()
@@ -142,7 +138,6 @@ void ui_go_home()
     s_app_hook = nullptr;
     build_launcher();
     ui_status_refresh();
-    schedule_repaint();
 }
 
 const App *ui_current_app() { return s_current; }
@@ -175,10 +170,6 @@ void ui_status_refresh()
 
 void ui_tick()
 {
-    if (s_repaint_at && (int32_t)(millis() - s_repaint_at) >= 0) {
-        s_repaint_at = 0;
-        lv_obj_invalidate(lv_scr_act());
-    }
     static uint32_t last = 0;
     if (millis() - last > 5000) {
         last = millis();
