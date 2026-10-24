@@ -105,7 +105,6 @@ static void show_list()
 
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
-    ui_list_text(list, sd_ok() ? "Notes on SD card  (n = new)" : "Notes in internal flash, no SD  (n = new)");
     lv_obj_t *nb = ui_list_btn(list, LV_SYMBOL_PLUS, "New note");
     lv_obj_add_event_cb(nb, [](lv_event_t *) { new_note(); }, LV_EVENT_CLICKED, nullptr);
 
