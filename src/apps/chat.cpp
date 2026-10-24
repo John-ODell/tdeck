@@ -85,7 +85,7 @@ static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
     lv_obj_set_style_pad_all(bubble, 5, 0);
     lv_obj_set_style_bg_color(bubble, lv_color_hex(mine ? 0x2f6fb5 : 0x2a313c), 0);
     lv_obj_set_size(bubble, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_max_width(bubble, 250, 0);
+    lv_obj_set_style_max_width(bubble, 300, 0);
     lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(bubble, mine ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_set_flex_flow(bubble, LV_FLEX_FLOW_COLUMN);
@@ -113,10 +113,12 @@ static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
     // SIZE_CONTENT bubble can wrap at a stale width on the first layout pass
     lv_obj_t *tl = lv_label_create(bubble);
     lv_label_set_long_mode(tl, LV_LABEL_LONG_WRAP);
+    // Proportional font: the theme's mono font fits 30 characters in a bubble, this about 50
+    lv_obj_set_style_text_font(tl, &lv_font_montserrat_14, 0);
     const lv_font_t *font = lv_obj_get_style_text_font(tl, LV_PART_MAIN);
     lv_point_t sz;
     lv_txt_get_size(&sz, m.text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-    lv_obj_set_width(tl, LV_MIN(sz.x + 1, 240));
+    lv_obj_set_width(tl, LV_MIN(sz.x + 1, 288));
     lv_label_set_text(tl, m.text);
 }
 
