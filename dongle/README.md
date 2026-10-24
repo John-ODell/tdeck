@@ -47,13 +47,23 @@ makes it a DM. `tools/meshterm.py` in the main repo does this from a terminal. T
 keeps the T-Deck's WiFi on, so leave it off when running on battery for long. Messages
 that arrive while the dongle is out of range stay on the T-Deck only.
 
-## Notes on the TF card (GEEK)
+## The TF card as a shared drive (GEEK)
 
 Put a FAT-formatted microSD in the GEEK before plugging it in and it shows up on the
-computer as a USB drive. **Sync notes to dongle** on the T-Deck copies the notes to
-`tdeck/notes/` on it. While the T-Deck writes, the drive disappears from the computer
-and the dongle re-plugs itself afterwards, so the computer re-reads the card; the Mac may
-mention a disk that wasn't ejected. Don't leave files open on it during a sync.
+computer as a USB drive. The T-Deck reaches the same card over the link:
+
+- **Files → Dongle card** browses it, opens text files, and `g` pulls any file to
+  `/dongle/` on the T-Deck (its SD card, or internal flash without one).
+- `p` on a local file in **Files** pushes it to `tdeck/` on the card.
+- **Sync notes to dongle** in **Keyboard** copies the notes to `tdeck/notes/`.
+
+Drop a file on the card from the computer and read it on the T-Deck across the room.
+Reads happen while the computer still has the drive. While the T-Deck writes, the drive
+disappears from the computer and the dongle re-plugs itself afterwards, so the computer
+re-reads the card; the Mac may mention a disk that wasn't ejected. Don't leave files open
+on it during a push. Names starting with a dot (the Mac's `._` shadows and Spotlight
+index) are hidden. The link moves tens of KB/s: fine for text and configs, slow for map
+tiles.
 
 ## How it talks
 

@@ -46,6 +46,25 @@ enum LinkBlobKind : uint8_t {
     BLOB_FILE_DATA = 4,  // T-Deck -> dongle: raw bytes, in order
     BLOB_FILE_END = 5,   // T-Deck -> dongle: close the file
     BLOB_SYNC_END = 6,   // T-Deck -> dongle: no more files, show the card to the computer
+    BLOB_FS_LIST = 7,    // T-Deck -> dongle: list this folder of the card (path string)
+    BLOB_FS_ENTRIES = 8, // dongle -> T-Deck: LinkFsEntries, one or more per folder
+    BLOB_FS_GET = 9,     // T-Deck -> dongle: send this file (path string), as FILE_BEGIN/DATA/END
+    BLOB_FS_ERROR = 10,  // dongle -> T-Deck: the list or get failed (message string)
+};
+
+// FILE_BEGIN's name is a path relative to the card root ("tdeck/notes/a.txt"); folders are
+// created as needed. The same kinds carry a file the other way for FS_GET.
+
+// A batch of folder entries: header, then {size, dir, nlen, name[nlen]} repeated
+struct __attribute__((packed)) LinkFsEntries {
+    uint8_t last; // 1 on the final batch for this folder
+    uint8_t count;
+};
+struct __attribute__((packed)) LinkFsEntry {
+    uint32_t size;
+    uint8_t dir;
+    uint8_t nlen;
+    // char name[nlen] follows
 };
 
 struct __attribute__((packed)) LinkTextEvent {
