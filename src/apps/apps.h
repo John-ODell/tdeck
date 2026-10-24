@@ -6,12 +6,15 @@ extern const App app_about;
 extern const App app_chat;
 extern const App app_nodes;
 extern const App app_gps;
+extern const App app_compass;
 extern const App app_map;
 extern const App app_wifi;
 extern const App app_ble;
 extern const App app_notes;
 extern const App app_files;
 extern const App app_settings;
+
+void trip_init();        // compass: start counting the trip at boot
 
 // Cross-app navigation
 void chat_open_peer(uint32_t peer);

@@ -12,6 +12,7 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 | **Nodes** | Every node heard: name, last heard, hops, SNR/RSSI, battery, distance and bearing. Actions: DM, request position, request info, show on map. |
 | **Map** | Offline map from SD tiles in [Meshtastic MUI's layout](#map-tiles), or a distance grid without tiles. Shows you and every node with a position. |
 | **GPS** | Auto-detects the L76K (9600) or u-blox M10 (38400) module. Shows fix, sats, HDOP, position, altitude, speed and UTC. Sets the clock. Has a "share my position" toggle (off by default). |
+| **Compass** | Heading-up rose from the GPS course (no magnetometer, so no heading while stopped), speed, altitude, and a trip that keeps counting with the app closed: distance, moving time, max speed (`r` resets). `m` marks a waypoint, kept across reboots; the rose shows its direction and the page its distance and bearing. `c` clears it. |
 | **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
 | **BLE** | Scanner that flags item trackers (Apple Find My / AirTag, Tile, Samsung SmartTag, Google Find) and Meshtastic devices. |
 | **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
