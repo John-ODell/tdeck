@@ -15,7 +15,7 @@ More screens in [`docs/screenshots/`](docs/screenshots/); the longer write-up is
 |---|---|
 | **Chat** | `#LongFast` channel plus direct messages. Delivery status (… queued, ✓ sent, ✓✓ relayed/acked, ✕ failed). DMs are PKI-encrypted (X25519 + AES-256-CCM), which Meshtastic 2.7+ requires. A DM to a node whose key isn't known yet waits until its NodeInfo arrives. |
 | **Nodes** | Every node heard: name, last heard, hops, SNR/RSSI, battery, distance and bearing. Actions: DM, request position, request info, show on map. |
-| **Map** | Offline map from SD tiles in [Meshtastic MUI's layout](#map-tiles), or a distance grid without tiles. Shows you and every node with a position. |
+| **Map** | Offline map from SD tiles in [Meshtastic MUI's layout](#map-tiles), or a distance grid without tiles. Shows you and every node with a position. `s` pulls new tiles from `map/` on the GEEK's card. |
 | **GPS** | Auto-detects the L76K (9600) or u-blox M10 (38400) module. Shows fix, sats, HDOP, position, altitude, speed and UTC. Sets the clock. Has a "share my position" toggle (off by default). |
 | **Compass** | Heading-up rose from the GPS course (no magnetometer, so no heading while stopped), speed, altitude, and a trip that keeps counting with the app closed: distance, moving time, max speed (`r` resets). `m` marks a waypoint, kept across reboots; the rose shows its direction and the page its distance and bearing. `c` clears it. |
 | **WiFi** | Scanner: SSID, signal, channel, security, BSSID, networks per channel. |
@@ -89,7 +89,7 @@ Copy 256 px PNG slippy tiles to the SD card (FAT32 or exFAT) as either:
 /maps/<style>/{z}/{x}/{y}.png
 ```
 
-This is the same layout Meshtastic MUI uses, so MUI tile packs work as-is. 8-bit palette PNGs decode fastest. Respect the tile provider's terms; OpenStreetMap's public tile servers forbid bulk downloads.
+This is the same layout Meshtastic MUI uses, so MUI tile packs work as-is. With a dongle paired, put the same `map/` tree on the GEEK's card (it is a USB drive on the computer) and press `s` in the Map app to pull it over the air. 8-bit palette PNGs decode fastest. Respect the tile provider's terms; OpenStreetMap's public tile servers forbid bulk downloads.
 
 ## Serial console
 
