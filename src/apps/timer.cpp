@@ -87,7 +87,7 @@ static void watch(lv_timer_t *)
     if (cd_rings && millis() - cd_last_ring > 1000) {
         cd_last_ring = millis();
         cd_rings--;
-        for (int i = 0; i < 3; i++) { audio_beep(2000, 90); delay(60); }
+        for (int i = 0; i < 3; i++) { audio_tone(2000, 90); audio_tone(0, 60); } // queued; the UI keeps moving
     }
     refresh();
 }

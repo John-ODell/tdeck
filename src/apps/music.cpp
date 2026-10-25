@@ -124,6 +124,7 @@ private:
     {
         if (fill < N) return true;
         sent += audio_write(buf + 2 * sent, fill - sent);
+        audio_streaming();
         if (sent < fill) return false;
         fill = sent = 0;
         return true;
