@@ -53,10 +53,18 @@ static void scan_dir(const String &dir, std::vector<String> &out, std::vector<St
     std::sort(out.begin(), out.end());
 }
 
+static int s_list = -1, s_index = -1;
+
 static void scan()
 {
+    // The lists are rebuilt from the card, so the current track is found again by name
+    // afterwards; a stale index into the old lists made the first click after a sync a
+    // silent no-op (#72)
+    String cur_dir, cur_file;
+    if (s_list >= 0 && s_index >= 0) { cur_dir = s_lists[s_list].dir; cur_file = s_lists[s_list].files[s_index]; }
+    s_list = s_index = -1;
     s_lists.clear();
-    if (!sd_mount()) return;
+    if (!sd_mount()) { Serial.println("[music] scan: no card"); return; }
     if (!SD.exists(ROOT)) SD.mkdir(ROOT);
     std::vector<String> subs;
     Playlist loose = {"Music", String(ROOT), {}};
@@ -68,6 +76,10 @@ static void scan()
         if (!p.files.empty()) s_lists.push_back(p);
     }
     if (!loose.files.empty()) s_lists.push_back(loose);
+    for (size_t l = 0; l < s_lists.size() && s_list < 0; l++)
+        if (s_lists[l].dir == cur_dir)
+            for (size_t i = 0; i < s_lists[l].files.size(); i++)
+                if (s_lists[l].files[i] == cur_file) { s_list = l; s_index = i; break; }
 }
 
 // "03-Quiet_Engine.mp3" shows as "Quiet Engine" until the tag says otherwise
@@ -103,6 +115,7 @@ public:
     }
     bool stop() override { fill = sent = 0; audio_silence(); return true; }
     uint32_t frames = 0;        // consumed since begin(), for the elapsed time
+    uint32_t rate() const { return hertz ? hertz : 44100; }
 private:
     static const int N = 256;
     int16_t buf[N * 2];
@@ -121,7 +134,6 @@ static AmpOutput *s_out = nullptr;
 static AudioGenerator *s_gen = nullptr;
 static AudioFileSourceSD *s_file = nullptr;
 static AudioFileSourceID3 *s_id3 = nullptr;
-static int s_list = -1, s_index = -1;
 static bool s_playing = false, s_paused = false;
 static int s_volume = 60;
 static String s_title, s_artist;
@@ -150,9 +162,12 @@ static void on_tag(void *, const char *type, bool, const char *str)
 static bool play_track(int list, int index)
 {
     stop_track();
-    if (list < 0 || list >= (int)s_lists.size()) return false;
+    if (list < 0 || list >= (int)s_lists.size() || index < 0 || index >= (int)s_lists[list].files.size()) {
+        Serial.printf("[music] play %d/%d: no such track (%d lists)\n", list, index, (int)s_lists.size());
+        strlcpy(s_error, "track not found", sizeof(s_error));
+        return false;
+    }
     Playlist &p = s_lists[list];
-    if (index < 0 || index >= (int)p.files.size()) return false;
     s_list = list;
     s_index = index;
     s_title = pretty(p.files[index]);
@@ -162,7 +177,7 @@ static bool play_track(int list, int index)
     audioLogger = &Serial;
     s_file = new AudioFileSourceSD(path.c_str());
     Serial.printf("[music] play %s open=%d size=%lu\n", path.c_str(), s_file->isOpen(), (unsigned long)s_file->getSize());
-    if (!s_file->isOpen()) { strlcpy(s_error, "can't open file", sizeof(s_error)); stop_track(); return false; }
+    if (!s_file->isOpen()) { Serial.println("[music] can't open file"); strlcpy(s_error, "can't open file", sizeof(s_error)); stop_track(); return false; }
     s_out = new AmpOutput();
     apply_volume();
     String l = p.files[index];
@@ -176,7 +191,7 @@ static bool play_track(int list, int index)
     } else {
         s_gen = new AudioGeneratorWAV();
     }
-    if (!s_gen->begin(src, s_out)) { strlcpy(s_error, "can't decode", sizeof(s_error)); stop_track(); return false; }
+    if (!s_gen->begin(src, s_out)) { Serial.println("[music] can't decode"); strlcpy(s_error, "can't decode", sizeof(s_error)); stop_track(); return false; }
     Serial.println("[music] decoding");
     s_playing = true;
     return true;
@@ -216,6 +231,9 @@ static void toggle()
         play_track(s_list, s_index);
     } else if (!s_lists.empty()) {
         play_track(0, 0);
+    } else {
+        Serial.printf("[music] toggle: nothing to play (card %d)\n", (int)sd_ok());
+        strlcpy(s_error, sd_ok() ? "no music found" : "no SD card", sizeof(s_error));
     }
 }
 
@@ -315,7 +333,7 @@ static void refresh_now()
         lv_label_set_text(s_big, s_lists.empty() ? "No music" : "Music");
         lv_label_set_text(s_sub, s_lists.empty() ? (sd_ok() ? "Put MP3s in /music on the card, or press s to sync" : "Needs an SD card") : "click to play");
     }
-    uint32_t sec = s_out && s_out->frames ? s_out->frames / 44100 : 0;
+    uint32_t sec = s_out && s_out->frames ? s_out->frames / s_out->rate() : 0;
     const char *state = s_error[0] ? s_error : !s_playing ? LV_SYMBOL_STOP " stopped" : s_paused ? LV_SYMBOL_PAUSE " paused" : LV_SYMBOL_PLAY " playing";
     lv_label_set_text_fmt(s_time, "%s   %lu:%02lu   " LV_SYMBOL_VOLUME_MAX " %d%%%s%s", state, (unsigned long)(sec / 60), (unsigned long)(sec % 60), s_volume,
                           s_syncing ? "   " : "", s_syncing ? s_sync_status : "");
