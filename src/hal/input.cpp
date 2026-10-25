@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "board.h"
+#include "core/settings.h"
 #include "TouchDrvGT911.hpp"
 
 static TouchDrvGT911 touch;
@@ -134,12 +135,41 @@ void input_poll()
         }
     }
 
-    // Two edges per detent
-    const int16_t step = 2;
-    while (tb_up >= step) { noInterrupts(); tb_up -= step; interrupts(); push_key(LV_KEY_PREV); }
-    while (tb_down >= step) { noInterrupts(); tb_down -= step; interrupts(); push_key(LV_KEY_NEXT); }
-    while (tb_left >= step) { noInterrupts(); tb_left -= step; interrupts(); push_key(LV_KEY_LEFT); }
-    while (tb_right >= step) { noInterrupts(); tb_right -= step; interrupts(); push_key(LV_KEY_RIGHT); }
+    // The hall sensors toggle many times per roll, so one step needs several edges.
+    // Partial counts are dropped after a pause, and a step on one axis clears the
+    // other so a slightly diagonal roll doesn't also move sideways.
+    // A minimum gap between steps keeps a fast flick from racing through long lists.
+    static const int16_t EDGES[] = {10, 7, 5, 3, 2};          // by settings.trackball 1..5
+    static const uint16_t GAP_MS[] = {220, 160, 120, 80, 50};
+    const int sp = (settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1;
+    const int16_t step = EDGES[sp];
+    static uint32_t last_fire_ms = 0;
+    const bool rate_ok = millis() - last_fire_ms >= GAP_MS[sp];
+    static uint32_t last_edge_ms = 0;
+    static int16_t seen = 0;
+    int16_t total = tb_up + tb_down + tb_left + tb_right;
+    if (total != seen) { seen = total; last_edge_ms = millis(); }
+    if (total && millis() - last_edge_ms > 250) {
+        noInterrupts(); tb_up = tb_down = tb_left = tb_right = 0; interrupts();
+        seen = 0;
+    }
+    auto fire = [&](volatile int16_t &axis, volatile int16_t &a, volatile int16_t &b, volatile int16_t &c, uint32_t key) {
+        if (axis < step) return;
+        if (!rate_ok) {
+            // Hold at most one pending step so nothing keeps scrolling after the roll stops
+            noInterrupts(); if (axis > step) axis = step; interrupts();
+            seen = tb_up + tb_down + tb_left + tb_right;
+            return;
+        }
+        noInterrupts(); axis -= step; a = b = c = 0; interrupts();
+        seen = axis;
+        last_fire_ms = millis();
+        push_key(key);
+    };
+    fire(tb_up, tb_down, tb_left, tb_right, LV_KEY_PREV);
+    fire(tb_down, tb_up, tb_left, tb_right, LV_KEY_NEXT);
+    fire(tb_left, tb_up, tb_down, tb_right, LV_KEY_LEFT);
+    fire(tb_right, tb_up, tb_down, tb_left, LV_KEY_RIGHT);
 
     // Trackball click: short = ENTER, long (>600 ms) = ESC
     static uint32_t down_at = 0;
