@@ -8,6 +8,7 @@
 void input_init();
 void input_poll();                 // call from loop(); drains keyboard and trackball
 uint32_t input_last_activity_ms(); // for screen timeout
+uint32_t input_blocked_count();    // input dropped while locked, for the "locked" hint
 bool input_keyboard_found();
 bool input_touch_found();
 void input_set_group(lv_group_t *g);

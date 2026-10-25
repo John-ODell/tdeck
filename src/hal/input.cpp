@@ -11,6 +11,7 @@ static lv_indev_t *s_keypad = nullptr, *s_pointer = nullptr;
 static uint32_t s_last_activity = 0;
 static input_key_hook_t s_hook = nullptr;
 static bool s_locked = false;
+static uint32_t s_blocked = 0;    // keys, rolls and taps dropped by the lock (#161)
 static bool s_touch_on = true;
 static bool s_raw_rolled = false;   // the ball moved during the current button hold (RAW mode)
 static input_lock_hook_t s_lock_hook = nullptr;
@@ -34,7 +35,7 @@ static uint32_t q[16];
 static uint8_t q_head = 0, q_tail = 0;
 static void push_key(uint32_t k)
 {
-    if (s_locked) return;            // a pocket press is not activity either
+    if (s_locked) { s_blocked++; return; } // a pocket press is not activity either
     s_last_activity = millis();
     if (s_hook && s_hook(k)) return;
     uint8_t next = (q_tail + 1) % 16;
@@ -104,11 +105,19 @@ static void touch_read(lv_indev_drv_t *, lv_indev_data_t *data)
         return;
     }
     if (s_touch && s_touch_on && touch.isPressed() && touch.getPoint(x, y, 1) > 0) {
+        static bool was_down = false;
+        if (s_locked) {
+            // Not activity either, or a locked screen lit for a message stays lit under a
+            // tapping finger and looks alive while it drops everything (#161)
+            if (!was_down) s_blocked++;
+            was_down = true;
+            return;
+        }
+        was_down = false;
         data->state = LV_INDEV_STATE_PR;
         data->point.x = x[0];
         data->point.y = y[0];
         s_last_activity = millis();
-        if (s_locked) data->state = LV_INDEV_STATE_REL;
     }
 }
 
@@ -172,6 +181,7 @@ void input_poll()
         int u = tb_up, d = tb_down, l = tb_left, r = tb_right;
         tb_up = tb_down = tb_left = tb_right = 0;
         interrupts();
+        if ((u | d | l | r) && s_locked) s_blocked++;
         if ((u | d | l | r) && !s_locked) {
             s_last_activity = millis();
             s_raw_dx += r - l;
@@ -244,6 +254,7 @@ void input_poll()
 }
 
 uint32_t input_last_activity_ms() { return s_last_activity; }
+uint32_t input_blocked_count() { return s_blocked; }
 bool input_keyboard_found() { return s_kb; }
 bool input_touch_found() { return s_touch; }
 void input_set_key_hook(input_key_hook_t hook) { s_hook = hook; }
