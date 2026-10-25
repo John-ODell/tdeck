@@ -18,7 +18,8 @@ static const char *REMOTE = "tdeck/todo.txt";
 
 struct Item { String text; bool done; };
 static std::vector<Item> s_items;
-static lv_obj_t *s_root, *s_ta = nullptr, *s_hdr = nullptr;
+static lv_obj_t *s_root, *s_ta = nullptr;
+static void add_item();
 static bool s_adding = false, s_open = false;
 static int s_focused = -1, s_confirm = -1;
 static lv_timer_t *s_push_timer = nullptr;
@@ -86,16 +87,16 @@ static void merge_pulled()
 
 // ---- sync ---------------------------------------------------------------------------
 
-static void set_hdr(const char *status)
+// Sync feedback only when something is wrong; a working sync is silent
+static void trouble(const char *status)
 {
-    if (!s_hdr) return;
-    lv_label_set_text_fmt(s_hdr, "To-do  (n = new, d = delete, c = clear done, s = sync)  %s", status);
+    if (s_open && status && *status) ui_toast(status);
 }
 
 static void push_done(bool ok)
 {
-    if (ok) { s_dirty = false; set_hdr("on the card"); }
-    else set_hdr(companion::status());
+    if (ok) s_dirty = false;
+    else trouble(companion::status());
 }
 
 static bool push()
@@ -133,7 +134,7 @@ static void pull_done(bool ok)
     }
     if (!s_open) return;
     // No file on the card yet is fine: ours becomes it
-    if (!push()) set_hdr(companion::status());
+    if (!push()) trouble(companion::status());
 }
 
 static void sync_card()
@@ -173,8 +174,7 @@ static void show_list()
 
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
-    s_hdr = lv_list_add_text(list, "");
-    set_hdr(!dongle::paired() ? "" : s_dirty ? "not on the card yet" : dongle::online() ? "" : "dongle offline");
+    if (dongle::paired() && !dongle::online()) trouble("Dongle offline: changes stay here");
     for (size_t i = 0; i < s_items.size(); i++) {
         Item &it = s_items[i];
         lv_obj_t *btn = ui_list_btn(list, it.done ? LV_SYMBOL_OK : LV_SYMBOL_STOP, it.text.c_str());
@@ -182,7 +182,10 @@ static void show_list()
         lv_obj_add_event_cb(btn, item_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_obj_add_event_cb(btn, item_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)i);
     }
-    if (s_items.empty()) lv_list_add_text(list, "Nothing to do. Press n to add an item.");
+    if (s_items.empty()) {
+        lv_obj_t *add = ui_list_btn(list, LV_SYMBOL_PLUS, "Nothing to do. Add an item");
+        lv_obj_add_event_cb(add, [](lv_event_t *) { add_item(); }, LV_EVENT_CLICKED, nullptr);
+    }
 }
 
 static void add_item()
