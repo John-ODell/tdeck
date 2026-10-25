@@ -20,23 +20,59 @@ static bool way_set = false;
 static double way_lat = 0, way_lon = 0;
 
 static const double MOVING_KMH = 2.0;    // below this the course is noise
+static bool s_moving = false;            // from the smoothed speed, shared with the screen
+
+// The last few fixes, one a second: the heading is their speed-weighted circular mean, so
+// a slow walk shows a steady arrow and a reading taken standing still counts for nothing
+static const int SMOOTH = 5;
+static double s_sin[SMOOTH], s_cos[SMOOTH], s_spd[SMOOTH];
+static int s_n = 0, s_i = 0;
+
+// The trip survives a reboot: saved about once a minute while moving and on reset
+static bool s_trip_dirty = false;
+static uint32_t s_saved_at = 0;
 
 static int32_t e7(double deg) { return (int32_t)llround(deg * 1e7); }
+
+static void save_trip()
+{
+    Preferences p;
+    p.begin("trip", false);
+    p.putDouble("m", trip_m);
+    p.putDouble("max", trip_max_kmh);
+    p.putUInt("mov", trip_moving_ms);
+    p.end();
+    s_trip_dirty = false;
+    s_saved_at = millis();
+}
 
 static void trip_tick(lv_timer_t *)
 {
     const GpsState &g = gps_state();
+    if (s_trip_dirty && millis() - s_saved_at > 60000) save_trip();
     if (!g.fix || g.hdop > 6) return;
     if (!trip_started) trip_started = millis();
-    bool moving = g.speed_kmh >= MOVING_KMH;
-    if (moving) {
-        heading = g.course_deg;
+
+    double c = g.course_deg * M_PI / 180.0;
+    s_sin[s_i] = g.speed_kmh * sin(c);
+    s_cos[s_i] = g.speed_kmh * cos(c);
+    s_spd[s_i] = g.speed_kmh;
+    s_i = (s_i + 1) % SMOOTH;
+    if (s_n < SMOOTH) s_n++;
+    double ss = 0, cs = 0, spd = 0;
+    for (int i = 0; i < s_n; i++) { ss += s_sin[i]; cs += s_cos[i]; spd += s_spd[i]; }
+    spd /= s_n;
+    s_moving = spd >= MOVING_KMH;
+
+    if (s_moving) {
+        heading = fmod(atan2(ss, cs) * 180.0 / M_PI + 360.0, 360.0);
         trip_moving_ms += 1000;
         if (g.speed_kmh > trip_max_kmh) trip_max_kmh = g.speed_kmh;
         if (have_last) {
             double d = geo_distance_m(e7(last_lat), e7(last_lon), e7(g.lat), e7(g.lon));
             if (d < 200) trip_m += d; // a jump that big in a second is a bad fix
         }
+        s_trip_dirty = true;
     }
     last_lat = g.lat;
     last_lon = g.lon;
@@ -49,6 +85,9 @@ void trip_init()
     p.begin("trip", true);
     way_set = p.isKey("wlat");
     if (way_set) { way_lat = p.getDouble("wlat"); way_lon = p.getDouble("wlon"); }
+    trip_m = p.getDouble("m", 0);
+    trip_max_kmh = p.getDouble("max", 0);
+    trip_moving_ms = p.getUInt("mov", 0);
     p.end();
     lv_timer_create(trip_tick, 1000, nullptr);
 }
@@ -58,7 +97,7 @@ static void save_waypoint()
     Preferences p;
     p.begin("trip", false);
     if (way_set) { p.putDouble("wlat", way_lat); p.putDouble("wlon", way_lon); }
-    else p.clear();
+    else { p.remove("wlat"); p.remove("wlon"); } // not clear(): the trip lives here too
     p.end();
 }
 
@@ -81,7 +120,7 @@ static void refresh()
 {
     if (!s_root) return;
     const GpsState &g = gps_state();
-    bool moving = g.fix && g.speed_kmh >= MOVING_KMH;
+    bool moving = g.fix && s_moving;
     double h = heading < 0 ? 0 : heading;
 
     // The rose turns so the heading points up; without a heading north is up
@@ -142,6 +181,7 @@ static bool keys(uint32_t k)
         trip_m = trip_max_kmh = 0;
         trip_moving_ms = 0;
         trip_started = 0;
+        save_trip();
         ui_toast("Trip reset");
     } else return false;
     refresh();
