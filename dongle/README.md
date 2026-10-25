@@ -74,6 +74,15 @@ on it during a push. Names starting with a dot (the Mac's `._` shadows and Spotl
 index) are hidden. The link moves tens of KB/s: fine for text and configs, slow for map
 tiles.
 
+## Screen capture (GEEK)
+
+`{"get":"screen"}` on the dongle's serial port answers with its 240×135 framebuffer as
+base64 RGB565. `tools/geekshot.py PORT out.png [scale]` saves it as a PNG:
+
+```bash
+python3 dongle/tools/geekshot.py /dev/cu.usbmodemXXXX geek.png 2
+```
+
 ## How it talks
 
 ESP-NOW on WiFi channel 1. Pairing is an X25519 exchange; both ends derive the ESP-NOW
