@@ -25,4 +25,10 @@ PairState pair_state();   // DONE/FAILED hold until pair_listen() or the next pa
 bool tap(uint8_t mod, uint8_t usage);
 bool mouse(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel);
 
+// Blobs (mesh text, files): sent in parts, answered by the dongle with an ACK
+typedef void (*blob_cb_t)(uint8_t kind, const uint8_t *data, size_t len);
+void set_blob_cb(blob_cb_t cb);          // called from tick(), not from the radio task
+bool send_blob(uint8_t kind, const void *data, size_t len, uint8_t *id_out = nullptr);
+bool take_ack(uint8_t id, bool *ok);     // true once the ACK for that id arrived
+
 } // namespace dongle
