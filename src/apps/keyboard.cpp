@@ -1,6 +1,7 @@
 // Keyboard: the T-Deck as a wireless keyboard + mouse, over Bluetooth HID or the
 // ESP-NOW USB dongle (dongle/). Live mode forwards every key; hold the trackball to stop.
 #include "apps.h"
+#include "core/settings.h"
 #include "ui/theme.h"
 #include <Arduino.h>
 #include <Preferences.h>
@@ -408,9 +409,12 @@ static void tick()
     if (s_in_live && s_ball == B_MOUSE) {
         int dx, dy;
         input_trackball_take(&dx, &dy);
-        // Edges to pixels, faster when rolled quickly
-        int mx = dx * 4, my = dy * 4;
-        if (abs(dx) + abs(dy) >= 4) { mx *= 2; my *= 2; }
+        // Edges to pixels: the Trackball speed setting picks the gain (four times the old
+        // fixed 4 at the default, #116) and a quick roll doubles it
+        static const int GAIN[] = {8, 12, 16, 20, 24};
+        const int g = GAIN[(settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1];
+        int mx = dx * g, my = dy * g;
+        if (abs(dx) + abs(dy) >= 3) { mx *= 2; my *= 2; }
         uint8_t b = input_trackball_pressed() ? 1 : 0;
         if (mx || my || b != s_buttons) {
             bool released = s_buttons && !b;
