@@ -453,7 +453,7 @@ static void update_status()
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
                           out_ready() ? "sending" : "not connected",
                           s_ball != B_MOUSE ? "hold trackball to stop"
-                          : s_scroll ? "scrolling   click = mouse" : "2x click = scroll   hold = drag   still 3 s = stop");
+                          : s_scroll ? "scrolling   click = mouse" : "2x = scroll   hold = drag   3 s = stop");
     lv_obj_set_style_text_color(s_live_status, out_ready() ? T_TEXT : T_WARN, 0);
 }
 
