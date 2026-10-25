@@ -12,6 +12,7 @@ static uint32_t s_last_activity = 0;
 static input_key_hook_t s_hook = nullptr;
 static bool s_locked = false;
 static bool s_touch_on = true;
+static bool s_raw_rolled = false;   // the ball moved during the current button hold (RAW mode)
 static input_lock_hook_t s_lock_hook = nullptr;
 
 void input_set_locked(bool locked) { s_locked = locked; }
@@ -162,6 +163,7 @@ void input_poll()
             s_last_activity = millis();
             s_raw_dx += r - l;
             s_raw_dy += d - u;
+            s_raw_rolled = true;
         }
     } else {
     // The hall sensors toggle many times per roll, so one step needs several edges.
@@ -207,16 +209,16 @@ void input_poll()
     static uint32_t down_at = 0;
     static bool was_down = false, long_sent = false, lock_sent = false;
     bool down = digitalRead(BOARD_BOOT_PIN) == LOW;
-    if (down && !was_down) { down_at = millis(); long_sent = lock_sent = false; }
+    if (down && !was_down) { down_at = millis(); long_sent = lock_sent = false; s_raw_rolled = false; }
     if (s_locked) {
         if (down && !lock_sent && millis() - down_at > 1000) {
             lock_sent = long_sent = true;   // the release after an unlock is not a click
             if (s_lock_hook) s_lock_hook(false);
         }
     } else if (s_tb_mode == TB_RAW) {
-        // Mouse mode: the hold is the drag (#48). Only a 3 s hold does anything else: it
-        // leaves typing (#119).
-        if (down && !long_sent && millis() - down_at > 3000) { long_sent = true; push_key(LV_KEY_ESC); }
+        // Mouse mode: the hold scrolls or drags (#48, #123). Only a still 3 s hold does
+        // anything else: it leaves typing (#119).
+        if (down && !long_sent && !s_raw_rolled && millis() - down_at > 3000) { long_sent = true; push_key(LV_KEY_ESC); }
         if (down != was_down) s_last_activity = millis();
     } else {
         if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }

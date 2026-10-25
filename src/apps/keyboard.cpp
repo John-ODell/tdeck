@@ -35,17 +35,73 @@ static void out_tap(uint8_t mod, uint8_t usage)
     else dongle::tap(mod, usage);
 }
 
-static void out_mouse(uint8_t buttons, int dx, int dy)
+static void out_mouse(uint8_t buttons, int dx, int dy, int wheel = 0)
 {
-    // Split big moves into int8 reports
+    // Split big moves into int8 reports; the wheel goes with the first
     do {
         int8_t x = dx > 127 ? 127 : dx < -127 ? -127 : dx;
         int8_t y = dy > 127 ? 127 : dy < -127 ? -127 : dy;
-        if (s_target == T_BLUETOOTH) hid_ble::mouse(buttons, x, y, 0);
-        else dongle::mouse(buttons, x, y, 0);
+        int8_t w = wheel > 127 ? 127 : wheel < -127 ? -127 : wheel;
+        if (s_target == T_BLUETOOTH) hid_ble::mouse(buttons, x, y, w);
+        else dongle::mouse(buttons, x, y, w);
         dx -= x;
         dy -= y;
+        wheel = 0;
     } while (dx || dy);
+}
+
+// Mouse mode (#123): a short press is a click, holding the button and rolling is the scroll
+// wheel, and a second press right after a release, held down, is a drag. Movement is
+// collected in 30 ms frames so a slow roll moves a few pixels and a flick moves far.
+static void mouse_tick()
+{
+    static uint32_t frame_at = 0, press_at = 0, release_at = 0;
+    static int fdx = 0, fdy = 0, wheel_rem = 0;
+    static bool was_down = false, drag = false, rolled = false;
+    int dx, dy;
+    input_trackball_take(&dx, &dy);
+    fdx += dx;
+    fdy += dy;
+    bool down = input_trackball_pressed();
+    uint32_t now = millis();
+    if (down && !was_down) {
+        press_at = now;
+        rolled = false;
+        drag = now - release_at < 300;
+        if (drag) { s_buttons = 1; out_mouse(1, 0, 0); }
+    } else if (!down && was_down) {
+        release_at = now;
+        if (drag) {
+            s_buttons = 0;
+            out_mouse(0, 0, 0);
+            if (s_target == T_DONGLE) out_mouse(0, 0, 0); // a lost release would leave it held
+        } else if (!rolled && now - press_at < 500) {
+            out_mouse(1, 0, 0);                          // a click
+            out_mouse(0, 0, 0);
+        }
+        drag = false;
+    }
+    was_down = down;
+    if (now - frame_at < 30) return;
+    frame_at = now;
+    if (!fdx && !fdy) return;
+    if (down && !drag) {
+        // Hold and roll: the wheel, two edges a notch, roll up = scroll up
+        rolled = true;
+        wheel_rem -= fdy;
+        int w = wheel_rem / 2;
+        wheel_rem -= w * 2;
+        if (w) out_mouse(0, 0, 0, w);
+        fdx = fdy = 0;
+        return;
+    }
+    static const int BASE[] = {3, 4, 6, 8, 10};        // pixels per edge at a slow roll
+    const int base = BASE[(settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1];
+    const int e = abs(fdx) + abs(fdy);
+    int boost = 1 + e * e / 2;                          // 1 edge x1, 2 x3, 3 x5, 4 x9
+    if (boost > 8) boost = 8;
+    out_mouse(s_buttons, fdx * base * boost, fdy * base * boost);
+    fdx = fdy = 0;
 }
 
 static bool out_ready() { return s_target == T_BLUETOOTH ? hid_ble::connected() : dongle::online(); }
@@ -375,7 +431,7 @@ static void update_status()
     lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
                           out_ready() ? "sending" : "not connected",
-                          s_ball == B_MOUSE ? "hold trackball 3 s to stop" : "hold trackball to stop");
+                          s_ball == B_MOUSE ? "hold+roll = scroll   hold 3 s = stop" : "hold trackball to stop");
     lv_obj_set_style_text_color(s_live_status, out_ready() ? T_TEXT : T_WARN, 0);
 }
 
@@ -406,23 +462,7 @@ static void tick()
             leave_pair();
         }
     }
-    if (s_in_live && s_ball == B_MOUSE) {
-        int dx, dy;
-        input_trackball_take(&dx, &dy);
-        // Edges to pixels: the Trackball speed setting picks the gain (eight times the
-        // original fixed 4 at the default, #116 then #120) and a quick roll doubles it
-        static const int GAIN[] = {16, 24, 32, 40, 48};
-        const int g = GAIN[(settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1];
-        int mx = dx * g, my = dy * g;
-        if (abs(dx) + abs(dy) >= 3) { mx *= 2; my *= 2; }
-        uint8_t b = input_trackball_pressed() ? 1 : 0;
-        if (mx || my || b != s_buttons) {
-            bool released = s_buttons && !b;
-            s_buttons = b;
-            out_mouse(b, mx, my);
-            if (released && s_target == T_DONGLE) out_mouse(0, 0, 0); // a lost release would leave it held
-        }
-    }
+    if (s_in_live && s_ball == B_MOUSE) mouse_tick();
 }
 
 static void close()
