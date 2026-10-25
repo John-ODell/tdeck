@@ -74,6 +74,13 @@ static void manage_screen()
     const uint32_t FADE_MS = 800;
     uint32_t last = input_last_activity_ms();
     if ((int32_t)(s_wake_at - last) > 0) last = s_wake_at;
+    // Input on a lit, locked screen is dropped: say so instead of looking dead (#161)
+    static uint32_t blocked_seen = 0, hint_at = 0;
+    uint32_t blocked = input_blocked_count();
+    if (blocked != blocked_seen) {
+        blocked_seen = blocked;
+        if (!s_screen_off && millis() - hint_at > 2000) { hint_at = millis(); ui_toast("Locked: hold the trackball 1 s"); }
+    }
     if (s_screen_off) {
         if (millis() - s_wake_at < 1000) {
             s_screen_off = false;              // lit for a look; still locked

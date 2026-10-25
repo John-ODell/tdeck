@@ -3,6 +3,7 @@
 #include "apps.h"
 #include "core/settings.h"
 #include "ui/theme.h"
+#include "ui/ui.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include "hal/hid_ble.h"
@@ -555,6 +556,10 @@ static void update_status()
 static void tick()
 {
     dongle::tick();
+    // Typing at a desk: no auto-lock while the computer is connected. Glancing at the
+    // computer for 10 s and coming back to dropped keys looked like a dead device (#161).
+    // A deliberate lock still holds (screen_wake only lights a locked screen for a look).
+    if (s_in_live && out_ready() && !input_locked()) screen_wake();
     static uint32_t last_status = 0, last_batt = 0;
     if (millis() - last_status > 500) {
         last_status = millis();
