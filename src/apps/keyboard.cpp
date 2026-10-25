@@ -423,15 +423,20 @@ static void build_live(lv_obj_t *parent)
     lv_obj_set_size(s_term_box, LV_PCT(100), 160);
     lv_obj_set_y(s_term_box, 22);
     lv_obj_add_event_cb(s_term_box, term_clicked, LV_EVENT_CLICKED, nullptr);
-    // Close by touch; Esc and the trackball hold still work (#155)
+    // Clear empties the T-Deck's copy of the text once it is on the computer; nothing is sent.
+    // Esc and the trackball hold leave the screen (#157)
     lv_obj_t *cb = lv_btn_create(s_live);
     lv_obj_set_size(cb, LV_PCT(100), 28);
     lv_obj_align(cb, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_text_font(cb, &lv_font_montserrat_14, 0);
     lv_obj_t *cl = lv_label_create(cb);
-    lv_label_set_text(cl, LV_SYMBOL_CLOSE "  Close");
+    lv_label_set_text(cl, LV_SYMBOL_TRASH "  Clear");
     lv_obj_center(cl);
-    lv_obj_add_event_cb(cb, [](lv_event_t *) { leave_live(); }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(cb, [](lv_event_t *) {
+        s_echo[0] = 0;
+        s_echo_len = s_caret = 0;
+        echo_redraw();
+    }, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_style_bg_color(s_term_box, T_BG, 0);
     lv_obj_set_style_border_color(s_term_box, T_DIM, 0);
     lv_obj_set_style_border_width(s_term_box, 1, 0);
