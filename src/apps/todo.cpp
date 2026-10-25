@@ -15,6 +15,7 @@
 static const char *LOCAL = "/todo.txt";
 static const char *PULLED = "/todo.remote.txt";
 static const char *REMOTE = "tdeck/todo.txt";
+static const char *SNAP = "/todo.pushed.txt";   // what the card last got from us, see merge_pulled()
 
 struct Item { String text; bool done; };
 static std::vector<Item> s_items;
@@ -95,16 +96,43 @@ static void save()
     f.close();
 }
 
-// The computer's copy folded in: new items are added, an item done on either side is done
+static bool has(const std::vector<Item> &v, const String &text)
+{
+    for (auto &i : v) if (i.text == text) return true;
+    return false;
+}
+
+// The computer's copy folded in: new items are added, an item done on either side is done.
+// The snapshot of the last push tells additions from deletions (#63): an item both sides
+// had at the last push and one side no longer has was deleted there, so it goes.
 static void merge_pulled()
 {
-    std::vector<Item> theirs;
+    std::vector<Item> theirs, snap;
     File f = store().open(PULLED, "r");
     if (!f) return;
     parse(f.readString(), theirs);
     f.close();
     store().remove(PULLED);
+    File sf = store().open(SNAP, "r");
+    if (sf) { parse(sf.readString(), snap); sf.close(); }
+    if (!snap.empty()) {
+        for (size_t i = 0; i < s_items.size();)
+            if (has(snap, s_items[i].text) && !has(theirs, s_items[i].text)) s_items.erase(s_items.begin() + i);
+            else i++;
+        for (size_t i = 0; i < theirs.size();)
+            if (has(snap, theirs[i].text) && !has(s_items, theirs[i].text)) theirs.erase(theirs.begin() + i);
+            else i++;
+    }
     merge_into(s_items, theirs);
+}
+
+static void save_snapshot()
+{
+    File in = store().open(LOCAL, "r");
+    if (!in) return;
+    File out = store().open(SNAP, "w");
+    if (out) { out.print(in.readString()); out.close(); }
+    in.close();
 }
 
 // ---- sync ---------------------------------------------------------------------------
@@ -117,7 +145,7 @@ static void trouble(const char *status)
 
 static void push_done(bool ok)
 {
-    if (ok) s_dirty = false;
+    if (ok) { s_dirty = false; save_snapshot(); }
     else trouble(companion::status());
 }
 
