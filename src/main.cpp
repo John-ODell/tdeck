@@ -96,6 +96,7 @@ void setup()
     ui_register_app(&app_nodes);
     ui_register_app(&app_map);
     ui_register_app(&app_gps);
+    ui_register_app(&app_compass);
     ui_register_app(&app_wifi);
     ui_register_app(&app_ble);
     ui_register_app(&app_spectrum);
@@ -116,6 +117,7 @@ void setup()
     mesh::set_text_callback(on_text);
     sd_mount();
     gps_init();
+    trip_init();
     companion::init();
 }
 

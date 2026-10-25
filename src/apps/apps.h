@@ -6,6 +6,7 @@ extern const App app_about;
 extern const App app_chat;
 extern const App app_nodes;
 extern const App app_gps;
+extern const App app_compass;
 extern const App app_map;
 extern const App app_wifi;
 extern const App app_ble;
@@ -19,6 +20,8 @@ extern const App app_spectrum;
 extern const App app_keyboard;
 
 void music_loop();       // music: decode the next bit of the track from loop()
+
+void trip_init();        // compass: start counting the trip at boot
 
 // Cross-app navigation
 class NimBLEAdvertisedDevice;
