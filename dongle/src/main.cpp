@@ -4,6 +4,9 @@
 // the Keyboard app. The new pairing is only saved once the T-Deck's first encrypted
 // packet checks out, so a pairing that half-failed leaves the old one in place.
 //
+// Besides keys, the link carries mesh chat both ways (JSON lines on the USB serial port)
+// and notes the T-Deck pushes to the TF card, which the computer sees as a USB drive.
+//
 // LED: fast blink = pairing, slow blink = paired but the T-Deck is away, on = connected.
 // Boards with a screen (GEEK) show the same plus the last keys typed.
 #include <Arduino.h>
@@ -19,6 +22,13 @@
 #include "link_proto.h"
 #ifdef GEEK_LCD
 #include <TFT_eSPI.h>
+#endif
+#ifdef GEEK_SD
+#include <USBMSC.h>
+#include <SD_MMC.h>
+#include <sdmmc_cmd.h>
+#include <utime.h>
+#include "tusb.h"
 #endif
 
 static USBHIDKeyboard Keyboard;
@@ -42,9 +52,15 @@ static uint32_t s_last_rx = 0, s_last_hello = 0;
 static uint8_t s_buttons = 0;
 static uint32_t s_taps = 0;
 static char s_last[24] = "";
+static LinkReasm s_reasm;
+static uint8_t s_blob_id = 0;
+static char s_last_msg[64] = "";
+static uint32_t s_msg_ver = 0;
+static char s_line[300];
+static size_t s_line_len = 0;
 
 // ESP-NOW callbacks run in the WiFi task; USB work happens in loop()
-struct Rx { uint8_t mac[6]; uint8_t len; uint8_t data[48]; };
+struct Rx { uint8_t mac[6]; uint8_t len; uint8_t data[250]; };
 static QueueHandle_t s_rxq;
 
 static int rng(void *, unsigned char *out, size_t n)
@@ -93,6 +109,13 @@ static bool x25519(const uint8_t scalar[32], const uint8_t *point /* null = base
     return ok;
 }
 
+static const char *state_name()
+{
+    if (s_pairing) return "pairing";
+    if (s_paired && s_last_rx && millis() - s_last_rx < 3000) return "online";
+    return "away";
+}
+
 static void led(bool on)
 {
 #if defined(LED_RGB_PIN)
@@ -106,7 +129,7 @@ static void led(bool on)
 static TFT_eSPI tft;
 enum ScreenState { SCR_PAIRING, SCR_AWAY, SCR_ONLINE };
 static int s_scr_state = -1;
-static uint32_t s_scr_taps = (uint32_t)-1;
+static uint32_t s_scr_taps = (uint32_t)-1, s_scr_msg_ver = (uint32_t)-1;
 
 static void screen_init()
 {
@@ -141,6 +164,7 @@ static void screen_draw(ScreenState st)
             break;
         case SCR_ONLINE:
             tft.drawString("Connected", 6, 28, 4);
+            s_scr_msg_ver = (uint32_t)-1;
             break;
         }
         if (s_paired) {
@@ -157,6 +181,15 @@ static void screen_draw(ScreenState st)
         tft.setTextColor(green, TFT_BLACK);
         tft.setTextPadding(228);
         tft.drawString(line, 6, 80, 2);
+        tft.setTextPadding(0);
+    }
+    if (st == SCR_ONLINE && s_msg_ver != s_scr_msg_ver) {
+        s_scr_msg_ver = s_msg_ver;
+        char line[40];
+        strlcpy(line, s_last_msg, sizeof(line));
+        tft.setTextColor(dim, TFT_BLACK);
+        tft.setTextPadding(228);
+        tft.drawString(line, 6, 98, 2);
         tft.setTextPadding(0);
     }
 }
@@ -185,6 +218,269 @@ static void note_tap(uint8_t mod, uint8_t usage)
         s_last[n] = c;
         s_last[n + 1] = 0;
     }
+}
+
+// ---- JSON on the serial port ------------------------------------------------------
+
+static void json_str(const char *s)
+{
+    Serial.print('"');
+    for (; *s; s++) {
+        uint8_t c = *s;
+        if (c == '"' || c == '\\') { Serial.print('\\'); Serial.print((char)c); }
+        else if (c == '\n') Serial.print("\\n");
+        else if (c < 0x20) Serial.printf("\\u%04x", c);
+        else Serial.print((char)c);
+    }
+    Serial.print('"');
+}
+
+static const char *state_name();
+static void json_link()
+{
+    Serial.printf("{\"type\":\"link\",\"state\":\"%s\"", state_name());
+    if (s_paired) Serial.printf(",\"tdeck\":\"%02x:%02x:%02x:%02x:%02x:%02x\"", s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5]);
+    Serial.println("}");
+}
+
+// Finds "key":"value" in a one-line JSON object; good enough for what the host sends
+static bool json_get(const char *line, const char *key, char *out, size_t cap)
+{
+    char pat[32];
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char *p = strstr(line, pat);
+    if (!p) return false;
+    p = strchr(p + strlen(pat), ':');
+    if (!p) return false;
+    while (*++p == ' ') {}
+    if (*p != '"') return false;
+    size_t n = 0;
+    for (p++; *p && *p != '"' && n + 1 < cap; p++) {
+        if (*p == '\\' && p[1]) {
+            p++;
+            out[n++] = *p == 'n' ? '\n' : *p;
+        } else {
+            out[n++] = *p;
+        }
+    }
+    out[n] = 0;
+    return true;
+}
+
+// ---- blobs ------------------------------------------------------------------------
+
+static void send_ack(uint8_t id, bool ok)
+{
+    LinkAck a;
+    link_hdr(&a.h, LINK_ACK);
+    a.id = id;
+    a.ok = ok;
+    link_tag(s_lmk, &a, offsetof(LinkAck, tag), a.tag);
+    esp_now_send(s_mac, (const uint8_t *)&a, sizeof(a));
+}
+
+static bool send_blob(uint8_t kind, const void *data, size_t len)
+{
+    if (!s_paired || len == 0 || len > LINK_BLOB_MAX * LINK_BLOB_PARTS) return false;
+    uint8_t id = ++s_blob_id;
+    uint8_t parts = (len + LINK_BLOB_MAX - 1) / LINK_BLOB_MAX;
+    for (uint8_t p = 0; p < parts; p++) {
+        LinkBlob b;
+        link_hdr(&b.h, LINK_BLOB);
+        b.kind = kind;
+        b.id = id;
+        b.part = p;
+        b.parts = parts;
+        size_t off = p * LINK_BLOB_MAX;
+        b.len = len - off > LINK_BLOB_MAX ? LINK_BLOB_MAX : len - off;
+        memcpy(b.data, (const uint8_t *)data + off, b.len);
+        link_tag(s_lmk, &b, offsetof(LinkBlob, data) + b.len, b.data + b.len);
+        if (esp_now_send(s_mac, (const uint8_t *)&b, link_blob_size(b.len)) != ESP_OK) return false;
+    }
+    return true;
+}
+
+// ---- TF card as a USB drive (GEEK) ------------------------------------------------
+// The card belongs to the computer except while the T-Deck is writing notes to it; then
+// it is pulled (the computer sees it removed), remounted here, written, and given back.
+#ifdef GEEK_SD
+static USBMSC s_msc;
+static bool s_sd = false, s_presented = false;
+static File s_sd_file;
+static uint32_t s_sd_busy_at = 0;
+static char s_sd_path[96];
+static uint32_t s_sd_mtime = 0;
+
+struct SDAccess : public fs::SDMMCFS {
+    sdmmc_card_t *card() { return _card; }
+};
+static sdmmc_card_t *sd_card() { return static_cast<SDAccess &>(SD_MMC).card(); }
+
+static int32_t msc_read(uint32_t lba, uint32_t off, void *buf, uint32_t n)
+{
+    sdmmc_card_t *c = sd_card();
+    if (!c || off || !s_presented) return -1;
+    return sdmmc_read_sectors(c, buf, lba, n / 512) == ESP_OK ? (int32_t)n : -1;
+}
+
+static int32_t msc_write(uint32_t lba, uint32_t off, uint8_t *buf, uint32_t n)
+{
+    sdmmc_card_t *c = sd_card();
+    if (!c || off || !s_presented) return -1;
+    return sdmmc_write_sectors(c, buf, lba, n / 512) == ESP_OK ? (int32_t)n : -1;
+}
+
+static bool sd_begin()
+{
+    SD_MMC.setPins(36, 35, 37, 33, 38, 34);
+    s_sd = SD_MMC.begin("/sd", false, false, 20000);
+    return s_sd;
+}
+
+// Before USB.begin(), so the drive is part of the composite device
+static void sd_init()
+{
+    if (!sd_begin()) {
+        Serial.println("[dongle] no TF card; notes sync is off");
+        return;
+    }
+    s_msc.vendorID("tdeck");
+    s_msc.productID("T-Deck notes");
+    s_msc.productRevision("1.0");
+    s_msc.onRead(msc_read);
+    s_msc.onWrite(msc_write);
+    s_msc.mediaPresent(true);
+    s_presented = true;
+    s_msc.begin(SD_MMC.cardSize() / 512, 512);
+    Serial.printf("[dongle] TF card %llu MB as a USB drive\n", SD_MMC.cardSize() >> 20);
+}
+
+static bool sd_take()
+{
+    if (!s_sd) return false;
+    s_sd_busy_at = millis();
+    if (!s_presented) return true;
+    s_msc.mediaPresent(false);
+    s_presented = false;
+    delay(50);
+    SD_MMC.end(); // drop anything cached from before the computer wrote to it
+    if (!sd_begin()) return false;
+    SD_MMC.mkdir("/tdeck");
+    SD_MMC.mkdir("/tdeck/notes");
+    return true;
+}
+
+// Flagging the medium as changed isn't enough for macOS to re-read it, so the dongle
+// unplugs itself from USB for a moment. The keyboard comes back with it.
+static void sd_give()
+{
+    if (!s_sd || s_presented) return;
+    if (s_sd_file) s_sd_file.close();
+    s_msc.mediaPresent(true);
+    s_presented = true;
+    tud_disconnect();
+    delay(300);
+    tud_connect();
+}
+
+static bool sd_file_begin(const LinkFileBegin *b)
+{
+    if (!sd_take()) return false;
+    if (s_sd_file) s_sd_file.close();
+    char name[64], path[96];
+    strlcpy(name, b->name, sizeof(name));
+    for (char *c = name; *c; c++) if (*c == '/' || *c == '\\') *c = '_';
+    snprintf(path, sizeof(path), "/tdeck/notes/%s", name);
+    snprintf(s_sd_path, sizeof(s_sd_path), "/sd%s", path);
+    s_sd_mtime = b->mtime;
+    s_sd_file = SD_MMC.open(path, FILE_WRITE);
+    Serial.printf("{\"type\":\"file\",\"name\":\"%s\",\"size\":%lu}\n", name, (unsigned long)b->size);
+    return (bool)s_sd_file;
+}
+
+static bool sd_file_data(const uint8_t *d, size_t n)
+{
+    if (!s_sd_file) return false;
+    s_sd_busy_at = millis();
+    return s_sd_file.write(d, n) == n;
+}
+
+static void sd_file_end()
+{
+    if (!s_sd_file) return;
+    s_sd_file.close();
+    if (s_sd_mtime) {
+        struct utimbuf t = {(time_t)s_sd_mtime, (time_t)s_sd_mtime};
+        utime(s_sd_path, &t);
+    }
+}
+
+static void sd_tick(uint32_t now)
+{
+    // A sync that stops half way must not keep the drive from the computer
+    if (s_sd && !s_presented && now - s_sd_busy_at > 5000) sd_give();
+}
+#endif
+
+static bool on_blob(uint8_t kind, const uint8_t *data, size_t len)
+{
+    switch (kind) {
+    case BLOB_TEXT_EVENT: {
+        if (len < offsetof(LinkTextEvent, text) + 1) return false;
+        LinkTextEvent e = {};
+        memcpy(&e, data, len > sizeof(e) ? sizeof(e) : len);
+        e.name[sizeof(e.name) - 1] = 0;
+        e.text[sizeof(e.text) - 1] = 0;
+        Serial.print("{\"type\":\"text\",\"from\":\"");
+        Serial.printf("%08lx\",\"to\":\"%08lx\",\"id\":%lu,\"time\":%lu,\"status\":%u,\"dm\":%s,\"name\":",
+                      (unsigned long)e.from, (unsigned long)e.to, (unsigned long)e.id, (unsigned long)e.time, e.status,
+                      e.to == 0xFFFFFFFF ? "false" : "true");
+        json_str(e.name);
+        Serial.print(",\"text\":");
+        json_str(e.text);
+        Serial.println("}");
+        snprintf(s_last_msg, sizeof(s_last_msg), "%s: %s", e.name, e.text);
+        s_msg_ver++;
+        return true;
+    }
+#ifdef GEEK_SD
+    case BLOB_FILE_BEGIN:
+        return len >= sizeof(LinkFileBegin) && sd_file_begin((const LinkFileBegin *)data);
+    case BLOB_FILE_DATA:
+        return sd_file_data(data, len);
+    case BLOB_FILE_END:
+        sd_file_end();
+        return true;
+    case BLOB_SYNC_END:
+        sd_give();
+        Serial.println("{\"type\":\"sync\",\"state\":\"done\"}");
+        return true;
+#else
+    case BLOB_FILE_BEGIN: case BLOB_FILE_DATA: case BLOB_FILE_END: case BLOB_SYNC_END:
+        return false; // no card on this board
+#endif
+    }
+    return false;
+}
+
+// A line from the host: {"send":"text"} with an optional "to" node hex, or plain text
+static void host_line(char *line)
+{
+    while (*line == ' ') line++;
+    if (!*line) return;
+    LinkSendText t = {};
+    t.to = 0xFFFFFFFF;
+    char to[12];
+    if (*line == '{') {
+        if (!json_get(line, "send", t.text, sizeof(t.text))) return;
+        if (json_get(line, "to", to, sizeof(to))) t.to = strtoul(to, nullptr, 16);
+    } else {
+        strlcpy(t.text, line, sizeof(t.text));
+    }
+    if (!t.text[0]) return;
+    bool online = s_paired && !s_pairing && s_last_rx && millis() - s_last_rx < 3000;
+    if (!online || !send_blob(BLOB_SEND_TEXT, &t, sizeof(uint32_t) + strlen(t.text) + 1))
+        Serial.println("{\"type\":\"error\",\"text\":\"T-Deck not connected\"}");
 }
 
 static void add_peer(const uint8_t mac[6], const uint8_t *lmk)
@@ -293,6 +589,8 @@ static void handle(const Rx &r)
     if (link_hdr_ok(d, r.len, LINK_PING, sizeof(LinkCtl))) ok = link_tag_ok(lmk, d, offsetof(LinkCtl, tag));
     else if (link_hdr_ok(d, r.len, LINK_TAP, sizeof(LinkTap))) ok = link_tag_ok(lmk, d, offsetof(LinkTap, tag));
     else if (link_hdr_ok(d, r.len, LINK_MOUSE, sizeof(LinkMouse))) ok = link_tag_ok(lmk, d, offsetof(LinkMouse, tag));
+    else if (link_hdr_ok(d, r.len, LINK_ACK, sizeof(LinkAck))) ok = link_tag_ok(lmk, d, offsetof(LinkAck, tag));
+    else if (link_blob_ok(d, r.len)) ok = link_tag_ok(lmk, d, r.len - LINK_TAG_LEN);
     if (!ok) return;
 
     if (lmk == s_trial_lmk) {
@@ -325,6 +623,13 @@ static void handle(const Rx &r)
         s_buttons = m->buttons;
         break;
     }
+    case LINK_BLOB: {
+        const LinkBlob *b = (const LinkBlob *)d;
+        if (!s_reasm.feed(b)) break;
+        send_ack(b->id, on_blob(s_reasm.kind, s_reasm.buf, s_reasm.len));
+        s_reasm.mask = 0;
+        break;
+    }
     }
 }
 
@@ -335,6 +640,9 @@ void setup()
     USB.manufacturerName("tdeck");
     Keyboard.begin();
     Mouse.begin();
+#ifdef GEEK_SD
+    sd_init();
+#endif
     USB.begin();
     pinMode(BOOT_PIN, INPUT_PULLUP);
 #if defined(LED_PIN)
@@ -415,7 +723,24 @@ void loop()
         pairing_since = 0;
     }
 
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            s_line[s_line_len] = 0;
+            if (s_line_len) host_line(s_line);
+            s_line_len = 0;
+        } else if (s_line_len + 1 < sizeof(s_line)) {
+            s_line[s_line_len++] = c;
+        }
+    }
+#ifdef GEEK_SD
+    sd_tick(now);
+#endif
+
     bool online = s_paired && !s_pairing && s_last_rx && now - s_last_rx < 3000;
+    static int last_state = -1;
+    int state = s_pairing ? 0 : online ? 2 : 1;
+    if (state != last_state) { last_state = state; json_link(); }
     if (s_pairing) led((now / 100) & 1);
     else if (online) led(true);
     else led((now / 1000) & 1);

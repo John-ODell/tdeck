@@ -16,6 +16,7 @@
 #include "hal/gps.h"
 #include "core/storage.h"
 #include "core/console.h"
+#include "link/companion.h"
 
 static uint32_t s_wake_at = 0;
 static bool s_screen_off = false;
@@ -111,6 +112,7 @@ void setup()
     mesh::set_text_callback(on_text);
     sd_mount();
     gps_init();
+    companion::init();
 }
 
 void loop()
@@ -119,6 +121,7 @@ void loop()
     mesh::loop();
     gps_loop();
     update_unread();
+    companion::tick();
     ui_tick();
     console_poll();
     manage_screen();

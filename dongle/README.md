@@ -33,6 +33,28 @@ while connected counts keys and shows the last few typed.
 The LED pin is set per env in `platformio.ini` (`LED_RGB_PIN=48` for the S3 DevKitC
 RGB LED, `LED_PIN=15` for the S2 Mini). Change it for other boards.
 
+## Mesh terminal
+
+With **Mesh: To dongle** on in the T-Deck's Keyboard app, every chat message the T-Deck
+receives or sends is printed on the dongle's USB serial port as one JSON line:
+
+```
+{"type":"text","from":"6ee1a2b3","to":"ffffffff","id":123,"time":1792797772,"status":0,"dm":false,"name":"Garage","text":"hello"}
+```
+
+Send a line to the port and the T-Deck transmits it on the channel; `{"send":"hi","to":"6ee1a2b3"}`
+makes it a DM. `tools/meshterm.py` in the main repo does this from a terminal. The relay
+keeps the T-Deck's WiFi on, so leave it off when running on battery for long. Messages
+that arrive while the dongle is out of range stay on the T-Deck only.
+
+## Notes on the TF card (GEEK)
+
+Put a FAT-formatted microSD in the GEEK before plugging it in and it shows up on the
+computer as a USB drive. **Sync notes to dongle** on the T-Deck copies the notes to
+`tdeck/notes/` on it. While the T-Deck writes, the drive disappears from the computer
+and the dongle re-plugs itself afterwards, so the computer re-reads the card; the Mac may
+mention a disk that wasn't ejected. Don't leave files open on it during a sync.
+
 ## How it talks
 
 ESP-NOW on WiFi channel 1. Pairing is an X25519 exchange; both ends derive the ESP-NOW

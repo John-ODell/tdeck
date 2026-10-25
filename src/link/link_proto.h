@@ -30,6 +30,40 @@ enum LinkType : uint8_t {
     LINK_PONG = 5,   // dongle -> T-Deck, encrypted
     LINK_TAP = 10,   // T-Deck -> dongle: LinkTap
     LINK_MOUSE = 11, // T-Deck -> dongle: LinkMouse
+    LINK_BLOB = 20,  // either way: one part of a LinkBlob (mesh text, files)
+    LINK_ACK = 21,   // answer to a complete blob: LinkAck
+};
+
+// Blobs: up to LINK_BLOB_PARTS parts of LINK_BLOB_MAX bytes, all but the last full.
+// Every complete blob is answered with an ACK carrying its id.
+#define LINK_BLOB_MAX 200
+#define LINK_BLOB_PARTS 4
+
+enum LinkBlobKind : uint8_t {
+    BLOB_TEXT_EVENT = 1, // T-Deck -> dongle: LinkTextEvent, a mesh message received or sent
+    BLOB_SEND_TEXT = 2,  // dongle -> T-Deck: LinkSendText, transmit this on the mesh
+    BLOB_FILE_BEGIN = 3, // T-Deck -> dongle: LinkFileBegin
+    BLOB_FILE_DATA = 4,  // T-Deck -> dongle: raw bytes, in order
+    BLOB_FILE_END = 5,   // T-Deck -> dongle: close the file
+    BLOB_SYNC_END = 6,   // T-Deck -> dongle: no more files, show the card to the computer
+};
+
+struct __attribute__((packed)) LinkTextEvent {
+    uint32_t from, to, id, time;
+    uint8_t status, pki;
+    char name[40];
+    char text[234];
+};
+
+struct __attribute__((packed)) LinkSendText {
+    uint32_t to; // 0xFFFFFFFF = channel
+    char text[234];
+};
+
+struct __attribute__((packed)) LinkFileBegin {
+    uint32_t size;
+    uint32_t mtime; // epoch seconds, 0 if unknown
+    char name[64];
 };
 
 struct __attribute__((packed)) LinkHdr {
@@ -62,6 +96,43 @@ struct __attribute__((packed)) LinkMouse {
     uint8_t tag[LINK_TAG_LEN];
 };
 
+struct __attribute__((packed)) LinkBlob {
+    LinkHdr h;
+    uint8_t kind, id, part, parts, len;
+    uint8_t data[LINK_BLOB_MAX + LINK_TAG_LEN]; // the tag follows data[len]
+};
+
+struct __attribute__((packed)) LinkAck {
+    LinkHdr h;
+    uint8_t id, ok;
+    uint8_t tag[LINK_TAG_LEN];
+};
+
+static inline size_t link_blob_size(uint8_t len) { return offsetof(LinkBlob, data) + len + LINK_TAG_LEN; }
+
+// Puts parts back together. Parts of a new id replace whatever was pending.
+struct LinkReasm {
+    uint8_t id = 0xFF, kind = 0, parts = 0, mask = 0;
+    uint16_t len = 0;
+    uint8_t buf[LINK_BLOB_MAX * LINK_BLOB_PARTS];
+
+    bool feed(const LinkBlob *b)
+    {
+        if (b->parts == 0 || b->parts > LINK_BLOB_PARTS || b->part >= b->parts || b->len > LINK_BLOB_MAX) return false;
+        if (b->id != id || b->kind != kind || b->parts != parts) {
+            id = b->id;
+            kind = b->kind;
+            parts = b->parts;
+            mask = 0;
+            len = 0;
+        }
+        memcpy(buf + b->part * LINK_BLOB_MAX, b->data, b->len);
+        mask |= 1 << b->part;
+        if (b->part == parts - 1) len = b->part * LINK_BLOB_MAX + b->len;
+        return mask == (1 << parts) - 1;
+    }
+};
+
 static inline void link_hdr(LinkHdr *h, uint8_t type)
 {
     h->magic[0] = 'T';
@@ -74,6 +145,14 @@ static inline bool link_hdr_ok(const uint8_t *data, int len, uint8_t type, int s
 {
     const LinkHdr *h = (const LinkHdr *)data;
     return len == size && h->magic[0] == 'T' && h->magic[1] == 'K' && h->type == type && h->version == LINK_VERSION;
+}
+
+// A blob packet is variable length: header + data[len] + tag
+static inline bool link_blob_ok(const uint8_t *data, int len)
+{
+    if (len < (int)link_blob_size(0)) return false;
+    const LinkBlob *b = (const LinkBlob *)data;
+    return link_hdr_ok(data, len, LINK_BLOB, link_blob_size(b->len));
 }
 
 // ESP-NOW local master key = SHA-256("tdeck-link-v1" || X25519 shared secret)[0..15]
