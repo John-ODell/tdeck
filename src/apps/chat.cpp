@@ -180,6 +180,11 @@ static void show_thread(uint32_t peer)
         lv_label_set_text_fmt(title, "DM %s%s", name, n && n->has_key ? "  " LV_SYMBOL_EYE_CLOSE : "  (no key yet)");
     }
     lv_obj_set_style_text_color(title, T_ACCENT, 0);
+    // The thread title is the one line here in the proportional font: in mono it clipped at
+    // "#LongFast  (everyone" (#79)
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(title, LV_PCT(100));
+    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
 
     s_list = lv_obj_create(s_root);
     lv_obj_set_style_border_width(s_list, 0, 0);
@@ -193,7 +198,7 @@ static void show_thread(uint32_t peer)
     s_ta = lv_textarea_create(s_root);
     lv_textarea_set_one_line(s_ta, true);
     lv_textarea_set_max_length(s_ta, 200);
-    lv_textarea_set_placeholder_text(s_ta, "Type, Enter to send");
+    lv_textarea_set_placeholder_text(s_ta, "Type a message");
     lv_obj_set_size(s_ta, LV_PCT(100), 38);
     lv_obj_align(s_ta, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_add_event_cb(s_ta, ta_ready, LV_EVENT_READY, nullptr);
