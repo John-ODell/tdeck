@@ -145,7 +145,7 @@ static bool keys(uint32_t k)
         return true;
     }
     String p = join(s_dir, en.name);
-    bool ok = en.dir ? SD.rmdir(p) : SD.remove(p);
+    bool ok = en.dir ? store().rmdir(p) : store().remove(p);
     ui_toast(ok ? "Deleted" : (en.dir ? "Folder must be empty" : "Delete failed"));
     show_dir(s_dir);
     return true;
@@ -164,13 +164,14 @@ static void show_dir(const String &dir)
 
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
+    // Without a card the same browse, view, delete and push work on internal flash, where
+    // pulled files land; the header says which store this is (#60)
     bool card = sd_mount();
+    fs::FS &fs = store();
     char a[16], b[16], hdr[96];
-    if (card)
-        snprintf(hdr, sizeof(hdr), "%s   %s used of %s   (d = delete, p = push)", dir.c_str(),
-                 fmt_size(sd_used_bytes(), a, sizeof(a)), fmt_size(sd_total_bytes(), b, sizeof(b)));
-    else
-        strlcpy(hdr, "No SD card. Pulled files go to internal flash.", sizeof(hdr));
+    snprintf(hdr, sizeof(hdr), "%s%s   %s used of %s   (d = delete, p = push)", card ? "" : "flash:", dir.c_str(),
+             fmt_size(card ? sd_used_bytes() : LittleFS.usedBytes(), a, sizeof(a)),
+             fmt_size(card ? sd_total_bytes() : LittleFS.totalBytes(), b, sizeof(b)));
     ui_list_text(list, hdr);
     s_status = nullptr;
     if (dir == "/" && dongle::paired()) {
@@ -180,10 +181,9 @@ static void show_dir(const String &dir)
         lv_obj_add_event_cb(btn, entry_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)0);
     }
     int base = dir == "/" && dongle::paired() ? 1 : 0;
-    if (!card) return;
 
     s_entries.clear();
-    File d = SD.open(dir);
+    File d = fs.open(dir);
     while (d) {
         File f = d.openNextFile();
         if (!f) break;
