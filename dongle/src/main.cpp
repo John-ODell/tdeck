@@ -31,6 +31,13 @@
 #include "tusb.h"
 #endif
 
+// Serial is the USB CDC port, started from setup() instead of at boot so the USB identity
+// is in place before the computer enumerates the device (#55)
+#if !ARDUINO_USB_CDC_ON_BOOT
+static USBCDC USBSerial;
+#define Serial USBSerial
+#endif
+
 static USBHIDKeyboard Keyboard;
 static USBHIDMouse Mouse;
 
@@ -651,6 +658,7 @@ static void host_line(char *line)
     t.to = 0xFFFFFFFF;
     char to[12];
     if (*line == '{') {
+        if (strstr(line, "\"get\"")) { json_link(); return; }   // {"get":"link"}: state on demand
         if (!json_get(line, "send", t.text, sizeof(t.text))) return;
         if (json_get(line, "to", to, sizeof(to))) t.to = strtoul(to, nullptr, 16);
     } else {
@@ -820,9 +828,13 @@ static void handle(const Rx &r)
 
 void setup()
 {
-    Serial.begin(115200);
+    // Identity first, then every interface of the composite device, then USB.begin().
+    // Our own product id: macOS caches the name by vendor:product, and Espressif's default
+    // 0x303a:0x1001 is on file as a DevKit from the factory firmware (#55).
+    USB.PID(0x81DE);
     USB.productName("T-Deck Keyboard Dongle");
     USB.manufacturerName("tdeck");
+    Serial.begin(115200);
     Keyboard.begin();
     Mouse.begin();
 #ifdef GEEK_SD

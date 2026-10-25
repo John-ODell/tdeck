@@ -10,7 +10,16 @@ pio run -e s3 -t upload    # other ESP32-S3 boards (LilyGO T-Dongle S3, DevKitC.
 pio run -e s2 -t upload    # ESP32-S2 boards (S2 Mini etc.)
 ```
 
-If the board doesn't show up for flashing, hold BOOT while plugging it in.
+If the board doesn't show up for flashing, hold BOOT while plugging it in. A GEEK already
+running this firmware can be reflashed without touching it:
+
+```bash
+pio run -e geek && python3 tools/geekflash.py /dev/cu.usbmodemXXXX   # needs pyserial and esptool 5
+```
+
+The script reboots it into the bootloader over the CDC line state, writes the images and
+restarts it. On the computer the dongle shows up as "T-Deck Keyboard Dongle" (USB
+0x303a:0x81de), with its TF card as a drive.
 
 ## Pairing
 
