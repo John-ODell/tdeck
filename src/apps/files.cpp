@@ -164,23 +164,14 @@ static void show_dir(const String &dir)
 
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
-    bool card = sd_mount();
-    char a[16], b[16], hdr[96];
-    if (card)
-        snprintf(hdr, sizeof(hdr), "%s   %s used of %s   (d = delete, p = push)", dir.c_str(),
-                 fmt_size(sd_used_bytes(), a, sizeof(a)), fmt_size(sd_total_bytes(), b, sizeof(b)));
-    else
-        strlcpy(hdr, "No SD card. Pulled files go to internal flash.", sizeof(hdr));
-    lv_list_add_text(list, hdr);
-    s_status = nullptr;
-    if (dir == "/" && dongle::paired()) {
-        // The dongle's card works with or without a local one
-        lv_obj_t *btn = ui_list_btn(list, LV_SYMBOL_USB, dongle::online() ? "Dongle card" : "Dongle card (offline)");
-        lv_obj_add_event_cb(btn, entry_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)0);
-        lv_obj_add_event_cb(btn, entry_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)0);
+    if (!sd_mount()) {
+        ui_list_text(list, "No SD card. Insert a FAT32/exFAT card and reopen.");
+        return;
     }
-    int base = dir == "/" && dongle::paired() ? 1 : 0;
-    if (!card) return;
+    char a[16], b[16], hdr[96];
+    snprintf(hdr, sizeof(hdr), "%s   %s used of %s   (d = delete)", dir.c_str(),
+             fmt_size(sd_used_bytes(), a, sizeof(a)), fmt_size(sd_total_bytes(), b, sizeof(b)));
+    ui_list_text(list, hdr);
 
     s_entries.clear();
     File d = SD.open(dir);
@@ -231,7 +222,7 @@ static void remote_listed(bool ok, const companion::FsEntry *e, size_t n)
         lv_obj_add_event_cb(btn, entry_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_obj_add_event_cb(btn, entry_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)i);
     }
-    if (s_entries.empty()) lv_list_add_text(list, "(empty)");
+    if (s_entries.empty()) ui_list_text(list, "(empty)");
 }
 
 // The dongle's card: the list arrives over the link a moment later
