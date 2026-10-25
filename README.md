@@ -2,7 +2,7 @@
 
 A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, internal antenna). It is keyboard-first and talks to stock **Meshtastic** nodes on the default US LongFast channel. It isn't a fork of Meshtastic: the radio protocol is reimplemented from the published source (see [docs/research](docs/research/report.md)).
 
-> **Status: v0.1, not yet run on hardware.** It builds, the protocol math is unit-tested against known values and OpenSSL, and it boots in Espressif's QEMU without crashing. Everything that needs the real radio, screen or GPS is listed under [Not verified yet](#not-verified-yet).
+> **Status: running on hardware.** Flashed and used on a T-Deck Plus since 2026-10-22: LongFast channel text and NodeInfo exchanged with a stock Meshtastic node, GPS, WiFi and BLE scans, Spectrum, the Keyboard app with the GEEK dongle, the shared drive, To-do, Timer, Compass and Music all checked on the device. Still open: a PKI DM against a real 2.7+ node and relaying a third node's packet (#26), battery calibration (#5).
 
 ## Apps
 
@@ -19,11 +19,9 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 | **Keyboard** | Use the T-Deck as a wireless keyboard and trackball mouse. **Bluetooth**: pair "T-Deck Keyboard" from a computer or phone (no PIN). **USB dongle**: an ESP32-S3/S2 running [`dongle/`](dongle/) plugs into the computer and types what the T-Deck sends over encrypted ESP-NOW. The trackball is a mouse (click = left button) or arrow keys. Long click stops typing. With **Mesh: To dongle** on, chat is relayed to the dongle's serial port as JSON and lines sent to it go out on the mesh (`tools/meshterm.py`), even with the app closed; **Sync notes to dongle** copies the notes to the GEEK's TF card, which the computer sees as a USB drive. |
 | **Notes** | Plain `.txt` notes in `/notes/` on the SD card (internal flash without a card). |
 | **To-do** | A check list in `/todo.txt` (`[ ] item` / `[x] item` lines). Click toggles, `n` adds, `d` deletes, `c` clears the done ones. With the dongle online it syncs with `tdeck/todo.txt` on the GEEK's card: edit that file on the computer, `s` (or opening the app) pulls and merges it, every change pushes. |
+| **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice; `p` pushes a file to the dongle's card. With a dongle paired, a **Dongle card** row opens the GEEK's TF card over the link: browse it, click a text file to read it, `g` pulls any file to `/dongle/` on the T-Deck. |
 | **Timer** | Stopwatch with laps and a countdown. Left/right switch; click starts and pauses; `l` lap, `r` reset; up/down set the countdown. Both keep running with the app closed, and the countdown rings the speaker and wakes the screen from any app. |
 | **Music** | MP3 and WAV from `/music` on the SD card through the speaker. Every folder in `/music` is a playlist, loose files are the `Music` playlist (the Pi's layout). Click = play/pause, left/right = track, up/down = volume, `p` = playlists, `x` = stop. Keeps playing with the app closed. `s` pulls everything new under `music/` on the GEEK's card. |
-| **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice. |
-| **Keyboard** | Use the T-Deck as a wireless keyboard and trackball mouse. **Bluetooth**: pair "T-Deck Keyboard" from a computer or phone (no PIN). **USB dongle**: an ESP32-S3/S2 running [`dongle/`](dongle/) plugs into the computer and types what the T-Deck sends over encrypted ESP-NOW. The trackball is a mouse (click = left button) or arrow keys. Long click stops typing. |
-| **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice; `p` pushes a file to the dongle's card. With a dongle paired, a **Dongle card** row opens the GEEK's TF card over the link: browse it, click a text file to read it, `g` pulls any file to `/dongle/` on the T-Deck. |
 | **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
 | **About** | Version, MAC, battery, memory, detected peripherals. |
 

@@ -171,7 +171,7 @@ static void show_dir(const String &dir)
                  fmt_size(sd_used_bytes(), a, sizeof(a)), fmt_size(sd_total_bytes(), b, sizeof(b)));
     else
         strlcpy(hdr, "No SD card. Pulled files go to internal flash.", sizeof(hdr));
-    lv_list_add_text(list, hdr);
+    ui_list_text(list, hdr);
     s_status = nullptr;
     if (dir == "/" && dongle::paired()) {
         // The dongle's card works with or without a local one
@@ -207,7 +207,7 @@ static void show_dir(const String &dir)
         lv_obj_add_event_cb(btn, entry_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)(i + base));
         lv_obj_add_event_cb(btn, entry_focused, LV_EVENT_FOCUSED, (void *)(intptr_t)(i + base));
     }
-    if (s_entries.empty()) lv_list_add_text(list, "(empty)");
+    if (s_entries.empty()) ui_list_text(list, "(empty)");
 }
 
 static void remote_listed(bool ok, const companion::FsEntry *e, size_t n)
@@ -250,29 +250,8 @@ static void show_remote(const String &dir)
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
     char hdr[96];
     snprintf(hdr, sizeof(hdr), "Dongle card %s   (click = open, g = pull)", dir.c_str());
-    lv_list_add_text(list, hdr);
-    s_status = lv_list_add_text(list, "listing...");
-    if (!companion::fs_list(dir.c_str(), remote_listed)) lv_label_set_text(s_status, "Dongle is busy or offline");
-}
-
-// The dongle's card: the list arrives over the link a moment later
-static void show_remote(const String &dir)
-{
-    s_viewing = false;
-    s_remote = true;
-    s_dir = dir;
-    s_confirm = s_focused = -1;
-    s_entries.clear();
-    lv_obj_clean(s_root);
-    s_status = nullptr;
-    lv_group_remove_all_objs(ui_group());
-    ui_set_app_key_hook(keys);
-    lv_obj_t *list = lv_list_create(s_root);
-    lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
-    char hdr[96];
-    snprintf(hdr, sizeof(hdr), "Dongle card %s   (click = open, g = pull)", dir.c_str());
-    lv_list_add_text(list, hdr);
-    s_status = lv_list_add_text(list, "listing...");
+    ui_list_text(list, hdr);
+    s_status = ui_list_text(list, "listing...");
     if (!companion::fs_list(dir.c_str(), remote_listed)) lv_label_set_text(s_status, "Dongle is busy or offline");
 }
 
