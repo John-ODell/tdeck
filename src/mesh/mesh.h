@@ -17,6 +17,14 @@ bool init();
 void loop();
 void apply_settings();               // re-tune radio after settings change
 bool radio_ok();
+
+// Band sweep for the spectrum app. Mesh RX/TX pause between begin and end;
+// queued packets go out once end() re-tunes the radio to the channel.
+bool sweep_begin(float bw_khz);
+float sweep_rssi(float mhz, uint32_t settle_us = 1000); // instantaneous RSSI (dBm); <1 ms reads invalid (-127.5)
+void debug_rssi();                  // console: RSSI probes at several settle times
+void sweep_end();
+bool sweeping();
 void flush_storage();                // write node DB and messages now (before sleep)
 uint32_t our_num();
 const Stats &stats();
