@@ -53,16 +53,17 @@ static void out_mouse(uint8_t buttons, int dx, int dy, int wheel = 0)
 // Mouse mode (#123): a short press is a click, holding the button and rolling is the scroll
 // wheel, and a second press right after a release, held down, is a drag. Movement is
 // collected in 30 ms frames so a slow roll moves a few pixels and a flick moves far.
-// The trackball button: click = left button, press-release-press-and-hold = drag,
-// double-click = scroll mode (the ball rolls freely and drives the wheel; a click ends it).
-// Holding the button while rolling scrolls nothing: the ball can hardly turn pressed in.
+// The trackball button (#141): a click goes out the moment the button is released. Holding
+// it 300 ms, or rolling while it is down, is a drag (button held until release). A second
+// click within 300 ms of the first toggles scroll mode and is swallowed, so the computer
+// sees one click; in scroll mode the ball drives the wheel and a click leaves it.
 static void update_status();
 static bool s_scroll = false;
 static void mouse_tick()
 {
-    enum { IDLE, DOWN1, WAIT2, DOWN2, DRAG };
+    enum { IDLE, DOWN, DRAG };
     static int state = IDLE;
-    static uint32_t frame_at = 0, at = 0;
+    static uint32_t frame_at = 0, at = 0, click_at = 0;
     static int fdx = 0, fdy = 0, wheel_rem = 0;
     static bool was_down = false, rolled = false;
     int dx, dy;
@@ -74,30 +75,29 @@ static void mouse_tick()
     uint32_t now = millis();
     if (down && !was_down) {
         at = now;
-        if (state == WAIT2) state = DOWN2;
-        else { state = DOWN1; rolled = false; }
+        rolled = false;
+        state = DOWN;
     } else if (!down && was_down) {
-        if (state == DOWN1) {
-            if (rolled || now - at >= 500) state = IDLE;          // a hold, not a click
-            else if (s_scroll) { s_scroll = false; state = IDLE; update_status(); }
-            else { state = WAIT2; at = now; }                      // click or the start of more
-        } else if (state == DOWN2) {
-            s_scroll = true;                                      // a double-click
-            state = IDLE;
-            update_status();
+        if (state == DOWN) {
+            if (s_scroll) { s_scroll = false; update_status(); }           // leave scroll mode, no click
+            else if (click_at && now - click_at < 300) {                   // a double-click: scroll mode
+                s_scroll = true;
+                click_at = 0;
+                update_status();
+            } else {
+                out_mouse(1, 0, 0);                                       // a click, right now
+                out_mouse(0, 0, 0);
+                click_at = now ? now : 1;
+            }
         } else if (state == DRAG) {
             s_buttons = 0;
             out_mouse(0, 0, 0);
-            if (s_target == T_DONGLE) out_mouse(0, 0, 0);         // a lost release would leave it held
-            state = IDLE;
+            if (s_target == T_DONGLE) out_mouse(0, 0, 0);                 // a lost release would leave it held
         }
+        state = IDLE;
     }
     was_down = down;
-    if (state == WAIT2 && now - at >= 300) {                      // nothing followed: a click
-        out_mouse(1, 0, 0);
-        out_mouse(0, 0, 0);
-        state = IDLE;
-    } else if (state == DOWN2 && (rolled || now - at >= 300)) {   // held: a drag
+    if (state == DOWN && !s_scroll && (rolled || now - at >= 300)) {       // held: a drag
         s_buttons = 1;
         out_mouse(1, 0, 0);
         state = DRAG;
@@ -453,7 +453,7 @@ static void update_status()
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
                           out_ready() ? "sending" : "not connected",
                           s_ball != B_MOUSE ? "hold trackball to stop"
-                          : s_scroll ? "scrolling   click = mouse" : "2x click = scroll   hold 3 s = stop");
+                          : s_scroll ? "scrolling   click = mouse" : "2x click = scroll   hold = drag   still 3 s = stop");
     lv_obj_set_style_text_color(s_live_status, out_ready() ? T_TEXT : T_WARN, 0);
 }
 
