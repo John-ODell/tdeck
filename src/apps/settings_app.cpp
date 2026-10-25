@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include "core/settings.h"
 #include "mesh/mesh.h"
@@ -115,7 +116,7 @@ static void open(lv_obj_t *parent)
 
     s_stats = lv_label_create(col);
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(s_stats, lv_color_hex(0x9fb4c8), 0);
+    lv_obj_set_style_text_color(s_stats, T_DIM, 0);
     refresh_stats();
 
     s_long = text_row(col, "Long name", settings.long_name, 39);
@@ -183,15 +184,14 @@ static void open(lv_obj_t *parent)
 
     lv_obj_t *save = lv_btn_create(col);
     lv_obj_set_width(save, LV_PCT(100));
-    lv_obj_set_style_bg_color(save, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
     lv_label_set_text(lv_label_create(save), LV_SYMBOL_SAVE " Save");
     lv_obj_add_event_cb(save, save_clicked, LV_EVENT_CLICKED, nullptr);
     add_focus(save);
 
     lv_obj_t *off = lv_btn_create(col);
     lv_obj_set_width(off, LV_PCT(100));
-    lv_obj_set_style_bg_color(off, lv_color_hex(0x6b2a2a), 0);
-    lv_obj_set_style_bg_color(off, lv_color_hex(0xc03a3a), LV_STATE_FOCUSED);
+    lv_obj_set_style_bg_color(off, T_DANGER, 0);
+    lv_obj_set_style_bg_color(off, T_DANGER_HI, LV_STATE_FOCUSED);
     lv_label_set_text(lv_label_create(off), LV_SYMBOL_POWER " Power off (click trackball to wake)");
     lv_obj_add_event_cb(off, [](lv_event_t *) {
         mesh::flush_storage();
