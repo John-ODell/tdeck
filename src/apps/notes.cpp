@@ -14,6 +14,43 @@ static String s_path, s_buf;
 
 static fs::FS &store() { return sd_ok() ? (fs::FS &)SD : (fs::FS &)LittleFS; }
 
+// Notes written on a boot where the card did not mount live in flash and were invisible
+// once it did (#102): with the card in, move them over. A name clash keeps both.
+static void adopt_flash_notes()
+{
+    if (!sd_ok() || !LittleFS.exists("/notes")) return;
+    File dir = LittleFS.open("/notes");
+    std::vector<String> names;
+    while (File f = dir.openNextFile()) {
+        if (!f.isDirectory()) names.push_back(f.name());
+        f.close();
+    }
+    dir.close();
+    int moved = 0;
+    for (auto &n : names) {
+        String from = "/notes/" + n, to = from;
+        if (SD.exists(to)) {
+            int dot = to.lastIndexOf('.');
+            to = dot > 0 ? to.substring(0, dot) + "-flash" + to.substring(dot) : to + "-flash";
+        }
+        File in = LittleFS.open(from, "r");
+        if (!in) continue;
+        File out = SD.open(to, "w");
+        if (!out) { in.close(); continue; }
+        uint8_t buf[256];
+        bool ok = true;
+        while (in.available()) {
+            size_t got = in.read(buf, sizeof(buf));
+            if (out.write(buf, got) != got) { ok = false; break; }
+        }
+        out.close();
+        in.close();
+        if (ok) { LittleFS.remove(from); moved++; }
+        else SD.remove(to);
+    }
+    if (moved) ui_toast((String(moved) + (moved == 1 ? " note moved from flash to the card" : " notes moved from flash to the card")).c_str());
+}
+
 static void show_list();
 
 static void save()
@@ -102,6 +139,7 @@ static void show_list()
     lv_obj_clean(s_root);
     lv_group_remove_all_objs(ui_group());
     if (!store().exists("/notes")) store().mkdir("/notes");
+    adopt_flash_notes();
 
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
