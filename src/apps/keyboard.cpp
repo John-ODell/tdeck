@@ -409,9 +409,9 @@ static void tick()
     if (s_in_live && s_ball == B_MOUSE) {
         int dx, dy;
         input_trackball_take(&dx, &dy);
-        // Edges to pixels: the Trackball speed setting picks the gain (four times the old
-        // fixed 4 at the default, #116) and a quick roll doubles it
-        static const int GAIN[] = {8, 12, 16, 20, 24};
+        // Edges to pixels: the Trackball speed setting picks the gain (eight times the
+        // original fixed 4 at the default, #116 then #120) and a quick roll doubles it
+        static const int GAIN[] = {16, 24, 32, 40, 48};
         const int g = GAIN[(settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1];
         int mx = dx * g, my = dy * g;
         if (abs(dx) + abs(dy) >= 3) { mx *= 2; my *= 2; }
