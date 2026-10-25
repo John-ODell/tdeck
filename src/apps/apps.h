@@ -11,11 +11,14 @@ extern const App app_wifi;
 extern const App app_ble;
 extern const App app_notes;
 extern const App app_timer;
+extern const App app_music;
 extern const App app_todo;
 extern const App app_files;
 extern const App app_settings;
 extern const App app_spectrum;
 extern const App app_keyboard;
+
+void music_loop();       // music: decode the next bit of the track from loop()
 
 // Cross-app navigation
 class NimBLEAdvertisedDevice;
