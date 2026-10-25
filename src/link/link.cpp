@@ -9,7 +9,7 @@
 
 namespace dongle {
 
-static bool s_running = false, s_paired = false, s_listen = false;
+static bool s_running = false, s_paired = false, s_listen = false, s_ble = false;
 static uint8_t s_mac[6], s_lmk[16];
 static volatile uint32_t s_last_pong = 0;
 static uint32_t s_last_ping = 0;
@@ -145,7 +145,9 @@ bool start()
     if (s_running) return true;
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
-    WiFi.setSleep(false); // power save would drop and delay packets
+    // Power save would drop and delay packets, but the Bluetooth controller refuses to start
+    // without it (coex_core_enable aborts), so sleep is on only while BLE is up (#151)
+    WiFi.setSleep(s_ble);
     esp_wifi_set_channel(LINK_CHANNEL, WIFI_SECOND_CHAN_NONE);
     if (esp_now_init() != ESP_OK) return false;
     esp_now_set_pmk(LINK_PMK);
@@ -171,6 +173,11 @@ void stop()
 }
 
 bool running() { return s_running; }
+void ble_sharing(bool on)
+{
+    s_ble = on;
+    if (s_running) WiFi.setSleep(on);
+}
 bool paired() { return s_paired; }
 void peer_mac(uint8_t mac[6]) { memcpy(mac, s_mac, 6); }
 bool online() { return s_paired && s_last_pong && millis() - s_last_pong < 3000; }
