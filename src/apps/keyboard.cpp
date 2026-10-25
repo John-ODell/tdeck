@@ -439,7 +439,8 @@ static void update_status()
         uint8_t m[6];
         dongle::peer_mac(m);
         snprintf(buf, sizeof(buf), LV_SYMBOL_USB " Dongle %02x:%02x:%02x %s %s", m[3], m[4], m[5],
-                 dongle::online() ? "online." : "offline: is it plugged in?", companion::status());
+                 dongle::online() ? "online." : dongle::old_firmware() ? "runs old firmware: reflash it from dongle/."
+                 : "offline: is it plugged in?", companion::status());
     }
     lv_label_set_text(s_status, buf);
     for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) {

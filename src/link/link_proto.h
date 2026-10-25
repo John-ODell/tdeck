@@ -5,7 +5,9 @@
 // the shared secret, add each other as encrypted peers, and the dongle confirms with an
 // encrypted PAIRED. After that every packet is ESP-NOW encrypted (AES-CCMP) and also
 // carries a truncated HMAC, so a packet from anyone without the key is ignored even if
-// it spoofs the peer's MAC unencrypted.
+// it spoofs the peer's MAC unencrypted. PING, TAP and MOUSE also carry a counter covered
+// by the tag; the dongle drops any counter it has already seen, so a recorded packet
+// cannot be replayed to type or click again.
 //
 // Keys go as taps (press + release on the dongle), so a lost packet can't leave a key
 // stuck down. Mouse packets carry the full button state.
@@ -16,7 +18,7 @@
 #include <mbedtls/sha256.h>
 
 #define LINK_CHANNEL 1
-#define LINK_VERSION 1
+#define LINK_VERSION 2 // 2: PING, TAP and MOUSE carry a counter under the tag (#47)
 #define LINK_TAG_LEN 8
 
 // Primary master key: only wraps the per-pair key inside the radio, so a constant is fine
@@ -98,6 +100,7 @@ struct __attribute__((packed)) LinkKeyMsg {
 
 struct __attribute__((packed)) LinkCtl {
     LinkHdr h;
+    uint32_t ctr; // T-Deck -> dongle: strictly increasing; 0 from the dongle
     uint8_t tag[LINK_TAG_LEN];
 };
 
@@ -105,6 +108,7 @@ struct __attribute__((packed)) LinkTap {
     LinkHdr h;
     uint8_t mod;   // HID modifier bits
     uint8_t usage; // HID keyboard usage
+    uint32_t ctr;
     uint8_t tag[LINK_TAG_LEN];
 };
 
@@ -112,6 +116,7 @@ struct __attribute__((packed)) LinkMouse {
     LinkHdr h;
     uint8_t buttons;
     int8_t dx, dy, wheel;
+    uint32_t ctr;
     uint8_t tag[LINK_TAG_LEN];
 };
 
@@ -164,6 +169,13 @@ static inline bool link_hdr_ok(const uint8_t *data, int len, uint8_t type, int s
 {
     const LinkHdr *h = (const LinkHdr *)data;
     return len == size && h->magic[0] == 'T' && h->magic[1] == 'K' && h->type == type && h->version == LINK_VERSION;
+}
+
+// The version a packet with our magic claims, or 0 when it is not ours at all
+static inline uint8_t link_version_of(const uint8_t *data, int len)
+{
+    const LinkHdr *h = (const LinkHdr *)data;
+    return len >= (int)sizeof(LinkHdr) && h->magic[0] == 'T' && h->magic[1] == 'K' ? h->version : 0;
 }
 
 // A blob packet is variable length: header + data[len] + tag
