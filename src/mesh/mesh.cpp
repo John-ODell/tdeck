@@ -473,6 +473,7 @@ static void handle_position(Node *n, const uint8_t *p, size_t len)
         n->lat_i = lat;
         n->lon_i = lon;
         n->has_pos = true;
+        nodedb::trail_add(n->num, lat, lon);
     }
     // No GPS fix of our own yet: take the clock from a recent neighbour report
     if (n->pos_time > 1700000000 && !now_epoch()) {
@@ -807,6 +808,7 @@ void set_own_position(int32_t lat_i, int32_t lon_i, int32_t alt, uint8_t sats)
     s_alt = alt;
     s_sats = sats;
     s_has_pos = true;
+    nodedb::trail_add(s_our_num, lat_i, lon_i);
 }
 
 bool own_position(int32_t *lat_i, int32_t *lon_i)
