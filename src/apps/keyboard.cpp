@@ -162,10 +162,12 @@ static void show(lv_obj_t *view)
         for (uint32_t i = 0; i < n; i++) {
             lv_obj_t *o = lv_obj_get_child(s_setup, i);
             if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) continue;
-            if (lv_obj_check_type(o, &lv_btn_class)) lv_group_add_obj(g, o);
+            if (lv_obj_check_type(o, &lv_btn_class)) { lv_group_add_obj(g, o); continue; }
             uint32_t m = lv_obj_get_child_cnt(o);
-            for (uint32_t j = 0; j < m; j++)
-                if (lv_obj_check_type(lv_obj_get_child(o, j), &lv_dropdown_class)) lv_group_add_obj(g, lv_obj_get_child(o, j));
+            for (uint32_t j = 0; j < m; j++) {
+                lv_obj_t *c = lv_obj_get_child(o, j);
+                if (lv_obj_check_type(c, &lv_dropdown_class) || lv_obj_check_type(c, &lv_btn_class)) lv_group_add_obj(g, c);
+            }
         }
         lv_group_focus_obj(s_start_btn);
     } else if (view == s_pairv) {
@@ -203,6 +205,9 @@ static void enter_live()
     s_scroll = false;
     s_in_live = true;
     s_buttons = 0;
+    // The thumb lands on the panel while typing: a stray touch would type into the echo or move
+    // the mouse, and once wiped the pairing (#119). Touch is off here and back on the setup page (#153).
+    input_set_touch(false);
     input_set_trackball_mode(s_ball == B_MOUSE ? TB_RAW : TB_ARROWS);
     show(s_live);
 }
@@ -212,6 +217,7 @@ static void leave_live()
     if (s_buttons) out_mouse(0, 0, 0);
     s_buttons = 0;
     s_in_live = false;
+    input_set_touch(true);
     input_set_trackball_mode(TB_FOCUS);
     show(s_setup);
 }
@@ -267,6 +273,8 @@ static lv_obj_t *column(lv_obj_t *parent)
     lv_obj_set_size(c, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(c, 4, 0);
+    lv_obj_set_style_pad_right(c, 4, 0);
+    lv_obj_set_style_text_font(c, &lv_font_montserrat_14, 0);
     lv_obj_add_flag(c, LV_OBJ_FLAG_SCROLLABLE);
     return c;
 }
@@ -275,46 +283,56 @@ static lv_obj_t *button(lv_obj_t *parent, const char *text, lv_event_cb_t cb, vo
 {
     lv_obj_t *b = lv_btn_create(parent);
     lv_obj_set_width(b, LV_PCT(100));
-    lv_label_set_text(lv_label_create(b), text);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, text);
+    lv_obj_center(l);
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, user);
-    lv_obj_add_event_cb(b, [](lv_event_t *e) { lv_obj_scroll_to_view(lv_event_get_target(e), LV_ANIM_ON); },
+    lv_obj_add_event_cb(b, [](lv_event_t *e) { lv_obj_scroll_to_view_recursive(lv_event_get_target(e), LV_ANIM_ON); },
                         LV_EVENT_FOCUSED, nullptr);
     return b;
 }
 
+// Settings-style row: label on the left, a fixed-width dropdown on the right (#153)
 static lv_obj_t *dropdown_row(lv_obj_t *parent, const char *label, const char *opts, int sel, lv_event_cb_t cb)
 {
     lv_obj_t *r = lv_obj_create(parent);
     lv_obj_remove_style_all(r);
-    lv_obj_set_size(r, LV_PCT(100), 34);
-    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(r, 8, 0);
+    lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_t *l = lv_label_create(r);
     lv_label_set_text(l, label);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *dd = lv_dropdown_create(r);
     lv_dropdown_set_options(dd, opts);
     lv_dropdown_set_selected(dd, sel);
-    lv_obj_set_flex_grow(dd, 1);
+    lv_obj_set_width(dd, 150);
+    lv_obj_set_style_pad_ver(dd, 5, 0); // 28 px rows: the whole page but Forget fits above the fold
+    lv_obj_align(dd, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_text_font(lv_dropdown_get_list(dd), &lv_font_montserrat_14, 0); // the list is not a child
     lv_obj_add_event_cb(dd, cb, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_add_event_cb(dd, [](lv_event_t *e) { lv_obj_scroll_to_view_recursive(lv_event_get_target(e), LV_ANIM_ON); },
+                        LV_EVENT_FOCUSED, nullptr);
     return dd;
 }
+
+static lv_obj_t *s_dongle_row;      // Pair and Sync side by side, dongle target only
+static uint32_t s_forget_at = 0;    // Forget needs a second press within FORGET_MS (a stray touch once wiped the pairing)
+static const uint32_t FORGET_MS = 4000;
 
 static void build_setup(lv_obj_t *parent)
 {
     s_setup = column(parent);
-    s_target_dd = dropdown_row(s_setup, "Send", "Bluetooth\nUSB dongle", s_target, [](lv_event_t *) {
+    s_target_dd = dropdown_row(s_setup, "Send to", "Bluetooth\nUSB dongle", s_target, [](lv_event_t *) {
         s_target = (Target)lv_dropdown_get_selected(s_target_dd);
         save_prefs();
         apply_target();
         show(s_setup);
     });
-    s_ball_dd = dropdown_row(s_setup, "Ball", "Mouse\nArrow keys", s_ball, [](lv_event_t *) {
+    s_ball_dd = dropdown_row(s_setup, "Trackball", "Mouse\nArrow keys", s_ball, [](lv_event_t *) {
         s_ball = (Ball)lv_dropdown_get_selected(s_ball_dd);
         save_prefs();
     });
     // Mesh relay: chat goes to the dongle's serial port and back, even with this app closed
-    s_relay_dd = dropdown_row(s_setup, "Mesh", "Off\nTo dongle", companion::enabled(), [](lv_event_t *) {
+    s_relay_dd = dropdown_row(s_setup, "Mesh chat", "Off\nTo dongle", companion::enabled(), [](lv_event_t *) {
         companion::set_enabled(lv_dropdown_get_selected(s_relay_dd) == 1);
         if (companion::enabled() && s_target == T_DONGLE) dongle::start();
     });
@@ -323,15 +341,34 @@ static void build_setup(lv_obj_t *parent)
     lv_obj_set_width(s_status, LV_PCT(100));
     lv_obj_set_style_text_font(s_status, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(s_status, T_DIM, 0);
-    s_start_btn = button(s_setup, LV_SYMBOL_KEYBOARD " Start typing", [](lv_event_t *) { enter_live(); });
-    s_pair_btn = button(s_setup, LV_SYMBOL_USB " Pair a dongle", [](lv_event_t *) { enter_pair(); });
-    s_sync_btn = button(s_setup, LV_SYMBOL_UPLOAD " Sync notes to dongle", [](lv_event_t *) {
+
+    // One big touch target: the typing screen itself has touch off, so this is where a thumb goes
+    s_start_btn = button(s_setup, LV_SYMBOL_KEYBOARD "   Start typing", [](lv_event_t *) { enter_live(); });
+    lv_obj_set_height(s_start_btn, 50);
+    lv_obj_set_style_border_width(s_start_btn, 2, 0);
+    lv_obj_set_style_text_font(s_start_btn, t_font_mono, 0);
+
+    s_dongle_row = lv_obj_create(s_setup);
+    lv_obj_remove_style_all(s_dongle_row);
+    lv_obj_set_size(s_dongle_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(s_dongle_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(s_dongle_row, 6, 0);
+    s_pair_btn = button(s_dongle_row, LV_SYMBOL_USB "  Pair a dongle", [](lv_event_t *) { enter_pair(); });
+    s_sync_btn = button(s_dongle_row, LV_SYMBOL_UPLOAD "  Sync notes", [](lv_event_t *) {
         if (!companion::sync_notes()) ui_toast("Dongle is not online");
     });
-    s_forget_btn = button(s_setup, LV_SYMBOL_TRASH " Forget", [](lv_event_t *) {
+    for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) { lv_obj_set_size(b, 0, 32); lv_obj_set_flex_grow(b, 1); }
+
+    s_forget_btn = button(s_setup, LV_SYMBOL_TRASH "  Forget", [](lv_event_t *) {
+        uint32_t now = millis();
+        if (!s_forget_at || now - s_forget_at > FORGET_MS) { s_forget_at = now; update_status(); return; }
+        s_forget_at = 0;
         if (s_target == T_BLUETOOTH) { hid_ble::forget_hosts(); ui_toast("Bluetooth hosts forgotten"); }
         else { dongle::forget(); ui_toast("Dongle forgotten"); }
+        update_status();
     });
+    lv_obj_set_height(s_forget_btn, 32);
+    lv_obj_set_style_text_color(s_forget_btn, T_DIM, 0);
 }
 
 static void build_live(lv_obj_t *parent)
@@ -407,9 +444,6 @@ static void refresh_pair_list()
 
 static void open(lv_obj_t *parent)
 {
-    // The thumb lands on the panel while typing and a stray touch once wiped the pairing:
-    // the Keyboard app is trackball and keys only (#119)
-    input_set_touch(false);
     Preferences p;
     p.begin("kbd", false); // read-write so a first run creates the namespace instead of logging an error
     s_target = (Target)(p.getUChar("target", T_BLUETOOTH) ? T_DONGLE : T_BLUETOOTH);
@@ -443,12 +477,13 @@ static void update_status()
                  : "offline: is it plugged in?", companion::status());
     }
     lv_label_set_text(s_status, buf);
-    for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) {
-        if (s_target == T_DONGLE) lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
-    }
+    if (s_target == T_DONGLE) lv_obj_clear_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
+    if (s_forget_at && millis() - s_forget_at > FORGET_MS) s_forget_at = 0;
     lv_label_set_text(lv_obj_get_child(s_forget_btn, 0),
-                      s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH " Forget hosts" : LV_SYMBOL_TRASH " Forget dongle");
+                      s_forget_at ? LV_SYMBOL_WARNING "  Press again to forget"
+                      : s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH "  Forget Bluetooth hosts" : LV_SYMBOL_TRASH "  Forget this dongle");
+    lv_obj_set_style_text_color(s_forget_btn, s_forget_at ? T_WARN : T_DIM, 0);
     lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
                           out_ready() ? "sending" : "not connected",
@@ -463,9 +498,9 @@ static void tick()
     static uint32_t last_status = 0, last_batt = 0;
     if (millis() - last_status > 500) {
         last_status = millis();
-        bool pair_was_hidden = lv_obj_has_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN);
+        bool pair_was_hidden = lv_obj_has_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
         update_status();
-        if (!s_in_live && !s_in_pair && pair_was_hidden != lv_obj_has_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN)) show(s_setup);
+        if (!s_in_live && !s_in_pair && pair_was_hidden != lv_obj_has_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN)) show(s_setup);
         if (s_in_pair) refresh_pair_list();
     }
     if (millis() - last_batt > 60000) {

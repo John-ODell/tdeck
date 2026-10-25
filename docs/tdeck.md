@@ -99,8 +99,8 @@ The same link carries more than keystrokes:
 
 The screen fades after 10 seconds and locks, so keys pressed in a pocket do nothing. Holding
 the trackball for a second unlocks it; holding it for two seconds locks it on purpose. Every
-app is driven by the keyboard and trackball; the touch screen works too, except in the
-Keyboard app where a thumb would hit it.
+app is driven by the keyboard and trackball; the touch screen works too, except on the
+Keyboard app's typing screen where a thumb would hit it.
 
 ![Launcher](screenshots/tdeck-launcher.png) ![About](screenshots/tdeck-about.png)
 
