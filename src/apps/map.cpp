@@ -11,6 +11,10 @@
 #include "core/storage.h"
 #include "mesh/mesh.h"
 #include "ui/util.h"
+#include <vector>
+#include <SD.h>
+#include "link/companion.h"
+#include "link/link.h"
 
 static lv_obj_t *s_view = nullptr, *s_info = nullptr;
 static double s_lat = 39.8, s_lon = -98.6;
@@ -163,6 +167,82 @@ static bool center_on_me()
     return true;
 }
 
+// ---- tiles from the dongle's card (s) -------------------------------------------------
+// Walks map/ on the GEEK's card to any depth and pulls every PNG the SD card lacks or
+// holds at another size (#136).
+
+extern const App app_map;
+struct Pull { String remote, local; };
+static std::vector<String> s_sync_dirs;
+static std::vector<Pull> s_sync_pulls;
+static int s_sync_got = 0;
+static bool s_syncing = false;
+
+static void sync_step();
+
+static void sync_finish(const char *msg)
+{
+    s_syncing = false;
+    ui_toast(msg);
+    if (ui_current_app() == &app_map) { find_tile_root(); render(); }
+}
+
+static void pulled(bool ok)
+{
+    if (ok) s_sync_got++;
+    else { char m[64]; snprintf(m, sizeof(m), "pull failed: %s", companion::status()); sync_finish(m); return; }
+    if (s_sync_got % 20 == 0) { char m[40]; snprintf(m, sizeof(m), "%d tiles, %d to go", s_sync_got, (int)s_sync_pulls.size()); ui_toast(m); }
+    sync_step();
+}
+
+static void listed(bool ok, const companion::FsEntry *e, size_t n)
+{
+    if (!ok) { sync_finish("no map/ folder on the card"); return; }
+    String dir = s_sync_dirs.front();
+    s_sync_dirs.erase(s_sync_dirs.begin());
+    for (size_t i = 0; i < n; i++) {
+        String name = e[i].name;
+        if (e[i].dir) { s_sync_dirs.push_back(dir + "/" + name); continue; }
+        if (!name.endsWith(".png") || name.startsWith("._")) continue; // skip macOS resource forks
+        String local = "/" + dir + "/" + name;
+        File f = SD.open(local, "r");
+        bool same = f && f.size() == e[i].size; // a tile that changed on the card is pulled again
+        if (f) f.close();
+        if (!same) s_sync_pulls.push_back({dir + "/" + name, local});
+    }
+    sync_step();
+}
+
+static void sync_step()
+{
+    if (!s_sync_dirs.empty()) {
+        if (!companion::fs_list(s_sync_dirs.front().c_str(), listed)) sync_finish("dongle is busy");
+        return;
+    }
+    if (!s_sync_pulls.empty()) {
+        Pull p = s_sync_pulls.front();
+        s_sync_pulls.erase(s_sync_pulls.begin());
+        if (!companion::fs_get(p.remote.c_str(), p.local.c_str(), pulled)) sync_finish("dongle is busy");
+        return;
+    }
+    char m[48];
+    snprintf(m, sizeof(m), s_sync_got ? "pulled %d tiles" : "no new tiles on the card", s_sync_got);
+    sync_finish(m);
+}
+
+static void sync_start()
+{
+    if (!sd_ok()) { ui_toast("Tiles need an SD card"); return; }
+    if (!dongle::online()) { ui_toast("Dongle is offline"); return; }
+    if (s_syncing || companion::busy()) { ui_toast("Already pulling"); return; }
+    s_syncing = true;
+    s_sync_got = 0;
+    s_sync_dirs = {"map"};
+    s_sync_pulls.clear();
+    ui_toast("Pulling tiles from the card");
+    sync_step();
+}
+
 static bool keys(uint32_t k)
 {
     switch (k) {
@@ -173,6 +253,7 @@ static bool keys(uint32_t k)
     case '+': case '=': case 'i': case LV_KEY_ENTER: if (s_zoom < 18) s_zoom++; render(); return true;
     case '-': case '_': case 'o': if (s_zoom > 1) s_zoom--; render(); return true;
     case 'c': if (center_on_me()) render(); else ui_toast("No GPS fix yet"); return true;
+    case 's': sync_start(); return true;
     case 'n': {
         // Cycle through nodes with positions
         static size_t idx = 0;
@@ -218,7 +299,7 @@ static void open(lv_obj_t *parent)
     lv_obj_align(s_info, LV_ALIGN_BOTTOM_LEFT, 4, 0);
     ui_set_app_key_hook(keys);
     render();
-    ui_toast("Trackball pans, click/+ zoom in, - out, c = me, n = next node");
+    ui_toast("Trackball pans, click/+ zoom in, - out, c = me, n = next node, s = pull tiles");
 }
 
 static void tick()
