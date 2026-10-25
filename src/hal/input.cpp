@@ -86,10 +86,23 @@ static void keypad_read(lv_indev_drv_t *, lv_indev_data_t *data)
     data->state = LV_INDEV_STATE_REL;
 }
 
+static int16_t s_tap_x = -1, s_tap_y = -1;
+static uint32_t s_tap_until = 0;
+void input_inject_tap(int x, int y) { s_tap_x = x; s_tap_y = y; s_tap_until = millis() + 80; }
+
 static void touch_read(lv_indev_drv_t *, lv_indev_data_t *data)
 {
     static int16_t x[1], y[1];
     data->state = LV_INDEV_STATE_REL;
+    if (s_tap_until) { // a console tap: pressed at one point for 80 ms, then released
+        if (millis() < s_tap_until) {
+            data->state = LV_INDEV_STATE_PR;
+            data->point.x = s_tap_x;
+            data->point.y = s_tap_y;
+            s_last_activity = millis();
+        } else s_tap_until = 0;
+        return;
+    }
     if (s_touch && s_touch_on && touch.isPressed() && touch.getPoint(x, y, 1) > 0) {
         data->state = LV_INDEV_STATE_PR;
         data->point.x = x[0];

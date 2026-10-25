@@ -100,6 +100,10 @@ void console_poll()
             uint32_t k = parse_key(line + 4);
             if (k) input_inject_key(k);
             Serial.println(k ? "ok" : "bad key");
+        } else if (!strncmp(line, "tap ", 4)) {
+            int x = 0, y = 0;
+            if (sscanf(line + 4, "%d %d", &x, &y) == 2) { input_inject_tap(x, y); Serial.println("ok"); }
+            else Serial.println("tap <x> <y>");
         } else if (!strcmp(line, "home")) { ui_go_home(); Serial.println("ok"); }
         else if (!strcmp(line, "shot")) shot();
         else if (!strcmp(line, "lock")) { screen_lock(); Serial.println("ok"); }
@@ -107,6 +111,6 @@ void console_poll()
         else if (!strncmp(line, "ls ", 3)) ls(line + 3);
         else if (!strncmp(line, "cat ", 4)) cat(line + 4);
         else if (!strcmp(line, "rssi")) mesh::debug_rssi();
-        else Serial.println("commands: open <app> | key <k> | home | shot | lock | unlock | ls <dir> | cat <file>");
+        else Serial.println("commands: open <app> | key <k> | tap <x> <y> | home | shot | lock | unlock | ls <dir> | cat <file>");
     }
 }
