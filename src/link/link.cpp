@@ -241,6 +241,35 @@ PairState pair_state() { return s_pair; }
 void tick()
 {
     if (!s_running) return;
+    // The WiFi and Spectrum apps turn WiFi off when they close, and a scan leaves the radio
+    // on another channel; either silences the link. A quiet link brings the radio back and
+    // returns to its channel every 2 s until the dongle answers (#132).
+    static uint32_t chan_at = 0;
+    if (s_paired && !online() && millis() - chan_at > 2000) {
+        chan_at = millis();
+        bool prom = false;
+        esp_wifi_get_promiscuous(&prom);
+        if (!prom && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+            if (!(WiFi.getMode() & WIFI_MODE_STA)) {
+                Serial.println("[link] WiFi was off: starting the link again");
+                esp_now_unregister_recv_cb();
+                esp_now_unregister_send_cb();
+                esp_now_deinit();
+                s_running = false;
+                start();
+                return;
+            }
+            esp_wifi_set_channel(LINK_CHANNEL, WIFI_SECOND_CHAN_NONE);
+        }
+        // A dongle that rebooted holds a replay floor up to a batch ahead of our counter and
+        // drops us until we pass it; a quiet link jumps a batch ahead, at most once a minute
+        static uint32_t skip_at = 0;
+        if (millis() - skip_at > 60000) {
+            skip_at = millis();
+            s_ctr += CTR_BATCH;
+            if (s_ctr >= s_ctr_saved) { s_ctr_saved = s_ctr + CTR_BATCH; save_ctr(); }
+        }
+    }
     if (s_pair == PAIR_WAITING && s_pair_sent && !s_pair_keyed) {
         add_peer(s_pending_mac, s_pending_lmk); // the dongle answers encrypted
         s_pair_keyed = true;
@@ -281,7 +310,9 @@ void tick()
         link_hdr(&c.h, LINK_PING);
         c.ctr = next_ctr();
         link_tag(s_lmk, &c, offsetof(LinkCtl, tag), c.tag);
-        esp_now_send(s_mac, (const uint8_t *)&c, sizeof(c));
+        esp_err_t e = esp_now_send(s_mac, (const uint8_t *)&c, sizeof(c));
+        static uint32_t said = 0;
+        if (e != ESP_OK && millis() - said > 5000) { said = millis(); Serial.printf("[link] ping: %s\n", esp_err_to_name(e)); }
     }
 }
 
