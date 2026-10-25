@@ -19,6 +19,7 @@
 #include "link/companion.h"
 
 static uint32_t s_wake_at = 0;
+void screen_wake() { s_wake_at = millis(); }
 static bool s_screen_off = false;
 
 static void on_text(const Message &m)
@@ -100,6 +101,7 @@ void setup()
     ui_register_app(&app_spectrum);
     ui_register_app(&app_keyboard);
     ui_register_app(&app_notes);
+    ui_register_app(&app_timer);
     ui_register_app(&app_todo);
     ui_register_app(&app_files);
     ui_register_app(&app_settings);

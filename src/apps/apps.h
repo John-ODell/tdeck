@@ -10,6 +10,7 @@ extern const App app_map;
 extern const App app_wifi;
 extern const App app_ble;
 extern const App app_notes;
+extern const App app_timer;
 extern const App app_todo;
 extern const App app_files;
 extern const App app_settings;
