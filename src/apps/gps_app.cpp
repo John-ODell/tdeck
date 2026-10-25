@@ -35,6 +35,10 @@ static void share_changed(lv_event_t *e)
 static void open(lv_obj_t *parent)
 {
     s_label = lv_label_create(parent);
+    // A proportional font and wrapping: the theme's mono font is too wide for these lines
+    lv_obj_set_style_text_font(s_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(s_label, LV_PCT(100));
+    lv_label_set_long_mode(s_label, LV_LABEL_LONG_WRAP);
     s_share = lv_checkbox_create(parent);
     lv_checkbox_set_text(s_share, "Share my position on the mesh");
     if (settings.share_position) lv_obj_add_state(s_share, LV_STATE_CHECKED);
