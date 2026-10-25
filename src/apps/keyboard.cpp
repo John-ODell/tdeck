@@ -275,9 +275,6 @@ static void build_live(lv_obj_t *parent)
     lv_obj_set_style_border_width(s_term_box, 1, 0);
     lv_obj_set_style_radius(s_term_box, 2, 0);
     lv_obj_set_style_pad_all(s_term_box, 4, 0);
-    // A tap on the screen leaves typing: in mouse mode the trackball hold is the drag (#48)
-    for (lv_obj_t *o : {s_live, s_term_box})
-        lv_obj_add_event_cb(o, [](lv_event_t *) { if (s_in_live) leave_live(); }, LV_EVENT_CLICKED, nullptr);
     s_term = lv_label_create(s_term_box);
     lv_label_set_long_mode(s_term, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_term, LV_PCT(100));
@@ -334,6 +331,9 @@ static void refresh_pair_list()
 
 static void open(lv_obj_t *parent)
 {
+    // The thumb lands on the panel while typing and a stray touch once wiped the pairing:
+    // the Keyboard app is trackball and keys only (#119)
+    input_set_touch(false);
     Preferences p;
     p.begin("kbd", false); // read-write so a first run creates the namespace instead of logging an error
     s_target = (Target)(p.getUChar("target", T_BLUETOOTH) ? T_DONGLE : T_BLUETOOTH);
@@ -375,7 +375,7 @@ static void update_status()
     lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
                           out_ready() ? "sending" : "not connected",
-                          s_ball == B_MOUSE ? "tap screen to stop" : "tap screen or hold trackball to stop");
+                          s_ball == B_MOUSE ? "hold trackball 3 s to stop" : "hold trackball to stop");
     lv_obj_set_style_text_color(s_live_status, out_ready() ? T_TEXT : T_WARN, 0);
 }
 
@@ -427,6 +427,7 @@ static void tick()
 
 static void close()
 {
+    input_set_touch(true);
     if (s_in_live) leave_live();
     input_set_trackball_mode(TB_FOCUS);
     dongle::pair_listen(false);
