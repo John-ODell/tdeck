@@ -27,6 +27,7 @@ static void defaults()
     settings.screen_timeout_s = 60;
     settings.tz_offset_min = -300;
     settings.trackball = 3;
+    settings.chat_tone = true;
 }
 
 void settings_load()

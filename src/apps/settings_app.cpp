@@ -7,7 +7,7 @@
 #include "hal/display.h"
 #include "hal/power.h"
 
-static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay;
+static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay, *s_tone;
 static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
@@ -90,6 +90,7 @@ static void save_clicked(lv_event_t *)
     settings.position_precision = PRECS[lv_dropdown_get_selected(s_prec)];
     settings.brightness = lv_slider_get_value(s_bright);
     settings.trackball = lv_slider_get_value(s_tball);
+    settings.chat_tone = lv_obj_has_state(s_tone, LV_STATE_CHECKED);
     settings.screen_timeout_s = TIMEOUTS[lv_dropdown_get_selected(s_timeout)];
     settings.tz_offset_min = TZ_VALUES[lv_dropdown_get_selected(s_tz)];
     settings_save();
@@ -174,6 +175,12 @@ static void open(lv_obj_t *parent)
     lv_obj_add_event_cb(s_tball, [](lv_event_t *) { settings.trackball = lv_slider_get_value(s_tball); },
                         LV_EVENT_VALUE_CHANGED, nullptr);
     add_focus(s_tball);
+
+    r = row(col, "Message tone");
+    s_tone = lv_switch_create(r);
+    if (settings.chat_tone) lv_obj_add_state(s_tone, LV_STATE_CHECKED);
+    lv_obj_align(s_tone, LV_ALIGN_RIGHT_MID, 0, 0);
+    add_focus(s_tone);
 
     int to_idx = 2;
     for (int i = 0; i < 6; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
