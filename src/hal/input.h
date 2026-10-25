@@ -15,6 +15,7 @@ void input_set_group(lv_group_t *g);
 typedef bool (*input_key_hook_t)(uint32_t key);
 void input_set_key_hook(input_key_hook_t hook);
 void input_inject_key(uint32_t key);  // as if typed (debug console)
+void input_inject_tap(int x, int y); // as if tapped, screen pixels (debug console)
 // Locked (screen off): keys and trackball rolls are dropped and are not activity, so a
 // pocket press changes nothing. Holding the trackball button about a second unlocks, and
 // holding it two seconds while awake locks; both go through the lock hook.
