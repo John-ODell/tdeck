@@ -28,6 +28,7 @@ static void on_text(const Message &m)
     s_wake_at = millis();
     uint32_t peer = messages::peer_of(m, mesh::our_num());
     if (chat_viewing(peer)) return;
+    if (settings.chat_tone) { audio_tone(1760, 60); audio_tone(0, 40); audio_tone(2349, 90); } // a short two-note chirp
     char name[44], buf[120];
     nodedb::display_name(m.from, name, sizeof(name));
     snprintf(buf, sizeof(buf), "%s%s: %s", peer == 0xFFFFFFFF ? "" : "DM ", name, m.text);
