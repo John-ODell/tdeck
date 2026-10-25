@@ -1,6 +1,7 @@
 #include "hid_ble.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include "link/link.h"
 #include <NimBLEHIDDevice.h>
 
 namespace hid_ble {
@@ -43,6 +44,7 @@ static Callbacks s_cb;
 bool start()
 {
     if (s_running) return true;
+    dongle::ble_sharing(true);
     NimBLEDevice::init("T-Deck Keyboard");
     NimBLEDevice::setSecurityAuth(true, false, true); // bond, no MITM (no display path), secure connections
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
@@ -72,6 +74,7 @@ void stop()
     s_running = false;
     s_connected = false;
     NimBLEDevice::deinit(true);
+    dongle::ble_sharing(false);
     delete s_hid;
     s_hid = nullptr;
     s_server = nullptr;
