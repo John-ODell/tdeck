@@ -5,6 +5,7 @@
 #include "board.h"
 #include "hal/display.h"
 #include "hal/input.h"
+#include "hal/audio.h"
 #include "hal/power.h"
 #include "ui/ui.h"
 #include "apps/apps.h"
@@ -129,6 +130,7 @@ void loop()
     update_unread();
     companion::tick();
     music_loop();
+    audio_tick();
     ui_tick();
     console_poll();
     manage_screen();

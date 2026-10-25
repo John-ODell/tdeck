@@ -52,27 +52,49 @@ void audio_silence()
     if (s_ready) i2s_zero_dma_buffer(I2S_NUM_0);
 }
 
-void audio_beep(uint16_t freq_hz, uint16_t ms)
+// ---- tones: a short queue the main loop feeds, so a beep never stalls the UI (#66) ----
+
+struct Tone { uint16_t hz, ms; };
+static Tone s_q[12];
+static uint8_t s_qh = 0, s_qt = 0;
+static uint32_t s_pos = 0;          // frames of the current tone already written
+static uint32_t s_last_stream = 0;  // millis() of the last audio_write(), i.e. music playing
+
+void audio_streaming() { s_last_stream = millis(); }
+
+void audio_tone(uint16_t freq_hz, uint16_t ms)
 {
-    const uint32_t RATE = 16000;
-    if (!audio_open(s_ready ? s_rate : RATE)) return;
+    uint8_t next = (s_qt + 1) % 12;
+    if (next == s_qh) return;        // queue full: drop it rather than wait
+    s_q[s_qt] = {freq_hz, ms};
+    s_qt = next;
+}
+
+void audio_tick()
+{
+    if (s_qh == s_qt) return;
+    // The music player owns the amplifier while it streams; tones would only garble it
+    if (s_last_stream && millis() - s_last_stream < 500) { s_qh = s_qt; s_pos = 0; return; }
+    if (!audio_open(s_ready ? s_rate : 16000)) { s_qh = s_qt; return; }
     const uint32_t rate = s_rate;
-    // A sine with a short fade at each end so it doesn't click
-    static int16_t buf[256 * 2];
-    const uint32_t total = rate * ms / 1000;
-    const uint32_t fade = rate / 100; // 10 ms
-    uint32_t n = 0;
-    while (n < total) {
-        uint32_t frames = total - n < 256 ? total - n : 256;
-        for (uint32_t i = 0; i < frames; i++, n++) {
-            float a = 6000.0f;
+    const Tone &t = s_q[s_qh];
+    const uint32_t total = rate * t.ms / 1000;
+    const uint32_t fade = rate / 100; // 10 ms at each end so it doesn't click
+    static int16_t buf[128 * 2];
+    // A few blocks per tick at most; the DMA takes what fits and the rest waits for the next loop
+    for (int block = 0; block < 4 && s_pos < total; block++) {
+        uint32_t frames = total - s_pos < 128 ? total - s_pos : 128;
+        for (uint32_t i = 0; i < frames; i++) {
+            uint32_t n = s_pos + i;
+            float a = t.hz ? 6000.0f : 0.0f;
             if (n < fade) a *= (float)n / fade;
             else if (total - n < fade) a *= (float)(total - n) / fade;
-            int16_t v = (int16_t)(a * sinf(2.0f * (float)M_PI * freq_hz * n / rate));
+            int16_t v = (int16_t)(a * sinf(2.0f * (float)M_PI * t.hz * n / rate));
             buf[2 * i] = buf[2 * i + 1] = v;
         }
-        size_t written = 0;
-        i2s_write(I2S_NUM_0, buf, frames * 4, &written, portMAX_DELAY);
+        size_t written = audio_write(buf, frames);
+        s_pos += written;
+        if (written < frames) break;  // DMA full: try again next loop
     }
-    audio_silence();
+    if (s_pos >= total) { s_pos = 0; s_qh = (s_qh + 1) % 12; }
 }
