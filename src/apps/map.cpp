@@ -2,6 +2,7 @@
 // /sd/maps/<style>/{z}/{x}/{y}.png (Meshtastic MUI layout). Without tiles it
 // draws a distance grid so node positions still make sense.
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -110,7 +111,7 @@ static void render()
         for (int gx = (int)(-fmod(x0, px)); gx < 320; gx += px) {
             lv_obj_t *ln = lv_obj_create(s_view);
             lv_obj_remove_style_all(ln);
-            lv_obj_set_style_bg_color(ln, lv_color_hex(0x1f2a36), 0);
+            lv_obj_set_style_bg_color(ln, T_SURFACE_HI, 0);
             lv_obj_set_style_bg_opa(ln, LV_OPA_COVER, 0);
             lv_obj_set_size(ln, 1, VIEW_H);
             lv_obj_set_pos(ln, gx, 0);
@@ -118,7 +119,7 @@ static void render()
         for (int gy = (int)(-fmod(y0, px)); gy < VIEW_H; gy += px) {
             lv_obj_t *ln = lv_obj_create(s_view);
             lv_obj_remove_style_all(ln);
-            lv_obj_set_style_bg_color(ln, lv_color_hex(0x1f2a36), 0);
+            lv_obj_set_style_bg_color(ln, T_SURFACE_HI, 0);
             lv_obj_set_style_bg_opa(ln, LV_OPA_COVER, 0);
             lv_obj_set_size(ln, 320, 1);
             lv_obj_set_pos(ln, 0, gy);
@@ -130,11 +131,11 @@ static void render()
         Node *n = nodedb::at(i);
         if (!n->has_pos) continue;
         add_marker(x0, y0, n->lat_i, n->lon_i, n->short_name,
-                   n->num == s_center_node ? lv_color_hex(0xf0a030) : lv_color_hex(0x30c060));
+                   n->num == s_center_node ? T_WARN : T_TEXT);
         shown++;
     }
     int32_t mlat, mlon;
-    if (mesh::own_position(&mlat, &mlon)) add_marker(x0, y0, mlat, mlon, "me", lv_color_hex(0x2f7dd1));
+    if (mesh::own_position(&mlat, &mlon)) add_marker(x0, y0, mlat, mlon, "me", T_HEAD);
 
     char scale[16];
     fmt_distance(step, scale, sizeof(scale));
@@ -209,7 +210,7 @@ static void open(lv_obj_t *parent)
     s_view = lv_obj_create(parent);
     lv_obj_remove_style_all(s_view);
     lv_obj_set_size(s_view, 320, VIEW_H);
-    lv_obj_set_style_bg_color(s_view, lv_color_hex(0x0b0f14), 0);
+    lv_obj_set_style_bg_color(s_view, T_BG, 0);
     lv_obj_set_style_bg_opa(s_view, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_view, LV_OBJ_FLAG_SCROLLABLE);
     s_info = lv_label_create(parent);

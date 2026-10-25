@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include "core/settings.h"
 #include "mesh/mesh.h"
@@ -7,7 +8,7 @@
 #include "hal/power.h"
 
 static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay;
-static lv_obj_t *s_prec, *s_bright, *s_timeout, *s_tz, *s_stats;
+static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
 static const char *TZ_OPTS = "Eastern\nCentral\nMountain\nPacific\nAlaska\nHawaii\nUTC";
@@ -54,6 +55,7 @@ static lv_obj_t *dropdown_row(lv_obj_t *parent, const char *label, const char *o
     lv_obj_t *dd = lv_dropdown_create(r);
     lv_dropdown_set_options(dd, opts);
     lv_dropdown_set_selected(dd, selected < 0 ? 0 : selected);
+    lv_obj_set_style_text_font(lv_dropdown_get_list(dd), &lv_font_montserrat_14, 0); // the list is not a child of the row
     lv_obj_set_width(dd, 150);
     lv_obj_align(dd, LV_ALIGN_RIGHT_MID, 0, 0);
     return add_focus(dd);
@@ -87,6 +89,7 @@ static void save_clicked(lv_event_t *)
     settings.rebroadcast = lv_obj_has_state(s_relay, LV_STATE_CHECKED);
     settings.position_precision = PRECS[lv_dropdown_get_selected(s_prec)];
     settings.brightness = lv_slider_get_value(s_bright);
+    settings.trackball = lv_slider_get_value(s_tball);
     settings.screen_timeout_s = TIMEOUTS[lv_dropdown_get_selected(s_timeout)];
     settings.tz_offset_min = TZ_VALUES[lv_dropdown_get_selected(s_tz)];
     settings_save();
@@ -108,10 +111,12 @@ static void open(lv_obj_t *parent)
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_add_flag(col, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_right(col, 4, 0);
+    // Labels, fields, dropdowns and buttons inherit this: the theme's mono font is too wide for the rows
+    lv_obj_set_style_text_font(col, &lv_font_montserrat_14, 0);
 
     s_stats = lv_label_create(col);
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(s_stats, lv_color_hex(0x9fb4c8), 0);
+    lv_obj_set_style_text_color(s_stats, T_DIM, 0);
     refresh_stats();
 
     s_long = text_row(col, "Long name", settings.long_name, 39);
@@ -159,6 +164,17 @@ static void open(lv_obj_t *parent)
                         LV_EVENT_VALUE_CHANGED, nullptr);
     add_focus(s_bright);
 
+    r = row(col, "Trackball speed");
+    s_tball = lv_slider_create(r);
+    lv_slider_set_range(s_tball, 1, 5);
+    lv_slider_set_value(s_tball, settings.trackball, LV_ANIM_OFF);
+    lv_obj_set_width(s_tball, 150);
+    lv_obj_align(s_tball, LV_ALIGN_RIGHT_MID, 0, 0);
+    // Live, so the new speed can be felt before saving
+    lv_obj_add_event_cb(s_tball, [](lv_event_t *) { settings.trackball = lv_slider_get_value(s_tball); },
+                        LV_EVENT_VALUE_CHANGED, nullptr);
+    add_focus(s_tball);
+
     int to_idx = 2;
     for (int i = 0; i < 6; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
     s_timeout = dropdown_row(col, "Screen off after", TIMEOUT_OPTS, to_idx);
@@ -168,15 +184,14 @@ static void open(lv_obj_t *parent)
 
     lv_obj_t *save = lv_btn_create(col);
     lv_obj_set_width(save, LV_PCT(100));
-    lv_obj_set_style_bg_color(save, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
     lv_label_set_text(lv_label_create(save), LV_SYMBOL_SAVE " Save");
     lv_obj_add_event_cb(save, save_clicked, LV_EVENT_CLICKED, nullptr);
     add_focus(save);
 
     lv_obj_t *off = lv_btn_create(col);
     lv_obj_set_width(off, LV_PCT(100));
-    lv_obj_set_style_bg_color(off, lv_color_hex(0x6b2a2a), 0);
-    lv_obj_set_style_bg_color(off, lv_color_hex(0xc03a3a), LV_STATE_FOCUSED);
+    lv_obj_set_style_bg_color(off, T_DANGER, 0);
+    lv_obj_set_style_bg_color(off, T_DANGER_HI, LV_STATE_FOCUSED);
     lv_label_set_text(lv_label_create(off), LV_SYMBOL_POWER " Power off (click trackball to wake)");
     lv_obj_add_event_cb(off, [](lv_event_t *) {
         mesh::flush_storage();

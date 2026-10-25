@@ -3,12 +3,14 @@
 #include <time.h>
 #include "hal/input.h"
 #include "hal/power.h"
+#include "theme.h"
 
 static const App *s_apps[24];
 static int s_app_count = 0;
 static const App *s_current = nullptr;
 static lv_obj_t *s_screen, *s_status, *s_status_left, *s_status_right, *s_content;
 static lv_group_t *s_group = nullptr;
+static lv_obj_t *s_grid = nullptr;
 static char s_extra[48] = "";
 static ui_key_hook_t s_app_hook = nullptr;
 
@@ -16,9 +18,32 @@ void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
 static const int STATUS_H = 20;
 
+// Launcher: left/right step one tile, up/down jump a whole row of the grid. Nothing wraps,
+// so a long roll stops at the edge instead of landing on About.
+static bool launcher_nav(uint32_t key)
+{
+    if (!s_grid || (key != LV_KEY_LEFT && key != LV_KEY_RIGHT && key != LV_KEY_PREV && key != LV_KEY_NEXT)) return false;
+    int n = lv_obj_get_child_cnt(s_grid);
+    if (!n) return false;
+    lv_obj_t *f = lv_group_get_focused(s_group);
+    int i = f && lv_obj_get_parent(f) == s_grid ? lv_obj_get_index(f) : 0;
+    int cols = 1;
+    lv_coord_t y0 = lv_obj_get_y(lv_obj_get_child(s_grid, 0));
+    while (cols < n && lv_obj_get_y(lv_obj_get_child(s_grid, cols)) == y0) cols++;
+    switch (key) {
+    case LV_KEY_LEFT: i = i > 0 ? i - 1 : i; break;        // the ends stop, nothing wraps
+    case LV_KEY_RIGHT: i = i < n - 1 ? i + 1 : i; break;
+    case LV_KEY_PREV: i = i - cols >= 0 ? i - cols : i; break;
+    case LV_KEY_NEXT: i = i + cols < n ? i + cols : (i / cols < (n - 1) / cols ? n - 1 : i); break;
+    }
+    lv_group_focus_obj(lv_obj_get_child(s_grid, i));
+    return true;
+}
+
 static bool key_hook(uint32_t key)
 {
     if (s_app_hook && s_app_hook(key)) return true;
+    if (!s_current && launcher_nav(key)) return true;
     if (key != LV_KEY_ESC) return false;
     if (s_current && s_current->on_back && s_current->on_back()) return true;
     if (s_current) { ui_go_home(); return true; }
@@ -35,6 +60,7 @@ static void new_group()
 
 static void clear_content()
 {
+    s_grid = nullptr;
     lv_obj_clean(s_content);
     lv_obj_set_style_pad_all(s_content, 4, 0); // apps like Map change it
     lv_obj_scroll_to(s_content, 0, 0, LV_ANIM_OFF);
@@ -57,14 +83,11 @@ static void build_launcher()
     lv_obj_set_style_pad_row(grid, 8, 0);
     lv_obj_set_style_pad_top(grid, 6, 0);
     lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+    s_grid = grid;
 
     for (int i = 0; i < s_app_count; i++) {
         lv_obj_t *btn = lv_btn_create(grid);
         lv_obj_set_size(btn, 92, 62);
-        lv_obj_set_style_radius(btn, 10, 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x1f2a36), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_width(btn, 0, LV_STATE_FOCUS_KEY);
         lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_all(btn, 2, 0);
@@ -73,6 +96,10 @@ static void build_launcher()
         lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
         lv_obj_t *label = lv_label_create(btn);
         lv_label_set_text(label, s_apps[i]->name);
+        // Names wider than the tile scroll instead of clipping
+        lv_obj_set_width(label, 86);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
         lv_obj_add_event_cb(btn, launcher_clicked, LV_EVENT_CLICKED, (void *)s_apps[i]);
         lv_group_add_obj(s_group, btn);
         lv_obj_add_event_cb(btn, [](lv_event_t *e) {
@@ -84,13 +111,15 @@ static void build_launcher()
 void ui_init()
 {
     s_screen = lv_scr_act();
-    lv_obj_set_style_bg_color(s_screen, lv_color_hex(0x0d1117), 0);
 
     s_status = lv_obj_create(s_screen);
     lv_obj_remove_style_all(s_status);
     lv_obj_set_size(s_status, LV_PCT(100), STATUS_H);
-    lv_obj_set_style_bg_color(s_status, lv_color_hex(0x161b22), 0);
+    lv_obj_set_style_bg_color(s_status, T_SURFACE, 0);
     lv_obj_set_style_bg_opa(s_status, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_side(s_status, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(s_status, T_DIM, 0);
+    lv_obj_set_style_border_width(s_status, 1, 0);
     lv_obj_set_style_pad_hor(s_status, 6, 0);
     lv_obj_clear_flag(s_status, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -110,12 +139,16 @@ void ui_init()
     input_set_key_hook(key_hook);
     ui_status_refresh();
     build_launcher();
+    theme_rain_splash(1500);
 }
 
 void ui_register_app(const App *app)
 {
     if (s_app_count < 24) s_apps[s_app_count++] = app;
 }
+
+// The display and the SD card share one SPI bus, and the first frame of an app that reads
+// the card has been seen to reach the panel with a band missing (launcher tiles left over
 
 void ui_open_app(const App *app)
 {
@@ -138,6 +171,13 @@ void ui_go_home()
 }
 
 const App *ui_current_app() { return s_current; }
+
+bool ui_open_app_named(const char *name)
+{
+    for (int i = 0; i < s_app_count; i++)
+        if (!strcasecmp(s_apps[i]->name, name)) { ui_open_app(s_apps[i]); return true; }
+    return false;
+}
 lv_group_t *ui_group() { return s_group; }
 
 void ui_set_status_extra(const char *text)
@@ -181,10 +221,12 @@ void ui_toast(const char *text)
     lv_label_set_text(box, text);
     lv_label_set_long_mode(box, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(box, 280);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0x2f7dd1), 0);
+    lv_obj_set_style_bg_color(box, T_SURFACE_HI, 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(box, T_ACCENT, 0);
+    lv_obj_set_style_border_width(box, 1, 0);
     lv_obj_set_style_pad_all(box, 8, 0);
-    lv_obj_set_style_radius(box, 8, 0);
+    lv_obj_set_style_radius(box, 2, 0);
     lv_obj_align(box, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_del_delayed(box, 2500);
 }
@@ -192,7 +234,6 @@ void ui_toast(const char *text)
 lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text)
 {
     lv_obj_t *btn = lv_list_add_btn(list, symbol, text);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
     lv_group_add_obj(ui_group(), btn);
     return btn;
 }

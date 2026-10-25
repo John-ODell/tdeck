@@ -5,6 +5,7 @@
 
 static lv_obj_t *s_root, *s_list, *s_title;
 static bool s_scanning = false;
+static uint32_t s_started = 0;
 
 static void start_scan()
 {
@@ -12,6 +13,7 @@ static void start_scan()
     WiFi.disconnect();
     WiFi.scanDelete();
     WiFi.scanNetworks(true, true); // async, include hidden
+    s_started = millis();
     s_scanning = true;
     lv_label_set_text(s_title, LV_SYMBOL_REFRESH " Scanning...");
 }
@@ -86,9 +88,17 @@ static void tick()
 {
     if (!s_scanning) return;
     int n = WiFi.scanComplete();
-    if (n == WIFI_SCAN_RUNNING) return;
+    // Arduino 2.0.9 reports WIFI_SCAN_FAILED once 20x the per-channel time (6 s) has
+    // passed, but a slow scan still finishes and its results land a moment later
+    if (n == WIFI_SCAN_RUNNING || (n == WIFI_SCAN_FAILED && millis() - s_started < 15000)) return;
     s_scanning = false;
-    show_results(n < 0 ? 0 : n);
+    if (n < 0) {
+        lv_obj_clean(s_list);
+        lv_label_set_text(s_title, "Scan failed");
+        lv_list_add_text(s_list, "The WiFi scan didn't finish. Press r to retry.");
+        return;
+    }
+    show_results(n);
 }
 
 static void close()

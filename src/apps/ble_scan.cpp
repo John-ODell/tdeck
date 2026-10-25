@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "ui/theme.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -9,7 +10,7 @@ static bool s_scanning = false, s_inited = false;
 static const NimBLEUUID MESHTASTIC_SVC("6ba1b218-15a8-461f-9fa8-5dcae273eafd");
 
 // Identify common item trackers and Meshtastic nodes from the advertisement
-static const char *classify(NimBLEAdvertisedDevice *d)
+const char *ble_classify(NimBLEAdvertisedDevice *d)
 {
     for (uint8_t i = 0; i < d->getServiceUUIDCount(); i++) {
         NimBLEUUID u = d->getServiceUUID(i);
@@ -65,7 +66,7 @@ static void show_results()
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < n; i++) {
             NimBLEAdvertisedDevice d = r.getDevice(i);
-            const char *kind = classify(&d);
+            const char *kind = ble_classify(&d);
             bool tracker = !strncmp(kind, "TRACKER", 7);
             if ((pass == 0) != tracker) continue;
             if (tracker) trackers++;
@@ -75,7 +76,7 @@ static void show_results()
             snprintf(line, sizeof(line), "%s%s%s\n%d dBm  %s", name.empty() ? "(no name)" : name.c_str(),
                      kind[0] ? "  - " : "", kind, d.getRSSI(), d.getAddress().toString().c_str());
             lv_obj_t *b = ui_list_btn(s_list, tracker ? LV_SYMBOL_WARNING : LV_SYMBOL_BLUETOOTH, line);
-            if (tracker) lv_obj_set_style_text_color(b, lv_color_hex(0xffb030), 0);
+            if (tracker) lv_obj_set_style_text_color(b, T_WARN, 0);
             lv_obj_add_event_cb(b, [](lv_event_t *) { start_scan(); }, LV_EVENT_CLICKED, nullptr);
         }
     }

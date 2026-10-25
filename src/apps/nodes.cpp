@@ -53,6 +53,9 @@ static void show_detail(uint32_t num)
              n->battery == 0 ? "?" : n->battery > 100 ? "USB" : (String(n->battery) + "%").c_str(), n->voltage,
              n->has_pos ? "yes" : "no", dist);
     lv_obj_t *l = lv_label_create(s_root);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0); // the theme's mono font is too wide for these lines
+    lv_obj_set_width(l, LV_PCT(100));
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_label_set_text(l, line);
 
     lv_obj_t *row = lv_obj_create(s_root);
@@ -65,8 +68,8 @@ static void show_detail(uint32_t num)
     for (int i = 0; i < 4; i++) {
         if (i == 3 && !n->has_pos) continue;
         lv_obj_t *b = lv_btn_create(row);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x2f7dd1), LV_STATE_FOCUSED);
         lv_obj_t *bl = lv_label_create(b);
+        lv_obj_set_style_text_font(bl, &lv_font_montserrat_14, 0); // four buttons fit the row in this font
         lv_label_set_text(bl, labels[i]);
         lv_obj_add_event_cb(b, action, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_group_add_obj(ui_group(), b);
@@ -111,11 +114,21 @@ static void show_list()
     s_last_refresh = millis();
 }
 
+// The detail's buttons sit in a row, so left/right walk them as well as up/down
+static bool keys(uint32_t k)
+{
+    if (!s_in_detail || (k != LV_KEY_LEFT && k != LV_KEY_RIGHT)) return false;
+    if (k == LV_KEY_LEFT) lv_group_focus_prev(ui_group());
+    else lv_group_focus_next(ui_group());
+    return true;
+}
+
 static void open(lv_obj_t *parent)
 {
     s_root = lv_obj_create(parent);
     lv_obj_remove_style_all(s_root);
     lv_obj_set_size(s_root, LV_PCT(100), LV_PCT(100));
+    ui_set_app_key_hook(keys);
     show_list();
 }
 
