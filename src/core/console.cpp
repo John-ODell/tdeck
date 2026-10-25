@@ -102,9 +102,11 @@ void console_poll()
             Serial.println(k ? "ok" : "bad key");
         } else if (!strcmp(line, "home")) { ui_go_home(); Serial.println("ok"); }
         else if (!strcmp(line, "shot")) shot();
+        else if (!strcmp(line, "lock")) { screen_lock(); Serial.println("ok"); }
+        else if (!strcmp(line, "unlock")) { screen_unlock(); Serial.println("ok"); }
         else if (!strncmp(line, "ls ", 3)) ls(line + 3);
         else if (!strncmp(line, "cat ", 4)) cat(line + 4);
         else if (!strcmp(line, "rssi")) mesh::debug_rssi();
-        else Serial.println("commands: open <app> | key <k> | home | shot | ls <dir> | cat <file>");
+        else Serial.println("commands: open <app> | key <k> | home | shot | lock | unlock | ls <dir> | cat <file>");
     }
 }

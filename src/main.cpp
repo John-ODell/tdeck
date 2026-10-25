@@ -22,6 +22,20 @@
 static uint32_t s_wake_at = 0;
 void screen_wake() { s_wake_at = millis(); }
 static bool s_screen_off = false;
+static uint32_t s_fade_start = 0;    // backlight fading towards the lock
+
+// Locked = screen off and every key or roll ignored, so a pocket press changes nothing.
+// A message or alarm still lights the screen for a moment but keeps the lock.
+static void set_lock(bool lock)
+{
+    input_set_locked(lock);
+    s_fade_start = 0;
+    s_screen_off = lock;
+    display_set_brightness(lock ? 0 : settings.brightness);
+    if (!lock) s_wake_at = millis();
+}
+void screen_lock() { set_lock(true); }
+void screen_unlock() { set_lock(false); }
 
 static void on_text(const Message &m)
 {
@@ -46,21 +60,27 @@ static void update_unread()
     ui_set_status_extra(buf);
 }
 
-// Backlight off after the idle timeout; any input or a new message wakes it
+// Backlight fades out after the idle timeout and the T-Deck locks. Input while locked is
+// dropped (and is not activity), so only screen_wake() from a message or alarm, or the
+// trackball hold through the lock hook, lights it again.
 static void manage_screen()
 {
+    const uint32_t FADE_MS = 800;
     uint32_t last = input_last_activity_ms();
     if ((int32_t)(s_wake_at - last) > 0) last = s_wake_at;
     if (s_screen_off) {
-        if (millis() - last < 1000) {
-            s_screen_off = false;
+        if (millis() - s_wake_at < 1000) {
+            s_screen_off = false;              // lit for a look; still locked
             display_set_brightness(settings.brightness);
-            input_set_screen_off(false);
         }
     } else if (settings.screen_timeout_s && millis() - last > settings.screen_timeout_s * 1000UL) {
-        s_screen_off = true;
-        input_set_screen_off(true);
-        display_set_brightness(0);
+        if (!s_fade_start) s_fade_start = millis();
+        uint32_t t = millis() - s_fade_start;
+        if (t >= FADE_MS) set_lock(true);
+        else display_set_brightness(settings.brightness * (FADE_MS - t) / FADE_MS);
+    } else if (s_fade_start) {
+        s_fade_start = 0;                      // touched during the fade
+        display_set_brightness(settings.brightness);
     }
 }
 
@@ -117,6 +137,7 @@ void setup()
 
     if (!mesh::init()) ui_toast("LoRa radio not found");
     mesh::set_text_callback(on_text);
+    input_set_lock_hook(set_lock);
     sd_mount();
     gps_init();
     companion::init();

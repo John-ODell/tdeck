@@ -10,9 +10,12 @@ static bool s_kb = false, s_touch = false;
 static lv_indev_t *s_keypad = nullptr, *s_pointer = nullptr;
 static uint32_t s_last_activity = 0;
 static input_key_hook_t s_hook = nullptr;
-static bool s_screen_off = false;
+static bool s_locked = false;
+static input_lock_hook_t s_lock_hook = nullptr;
 
-void input_set_screen_off(bool off) { s_screen_off = off; }
+void input_set_locked(bool locked) { s_locked = locked; }
+bool input_locked() { return s_locked; }
+void input_set_lock_hook(input_lock_hook_t hook) { s_lock_hook = hook; }
 
 static volatile int16_t tb_up = 0, tb_down = 0, tb_left = 0, tb_right = 0;
 static TrackballMode s_tb_mode = TB_FOCUS;
@@ -28,8 +31,8 @@ static uint32_t q[16];
 static uint8_t q_head = 0, q_tail = 0;
 static void push_key(uint32_t k)
 {
+    if (s_locked) return;            // a pocket press is not activity either
     s_last_activity = millis();
-    if (s_screen_off) return;
     if (s_hook && s_hook(k)) return;
     uint8_t next = (q_tail + 1) % 16;
     if (next == q_head) return;
@@ -89,7 +92,7 @@ static void touch_read(lv_indev_drv_t *, lv_indev_data_t *data)
         data->point.x = x[0];
         data->point.y = y[0];
         s_last_activity = millis();
-        if (s_screen_off) data->state = LV_INDEV_STATE_REL;
+        if (s_locked) data->state = LV_INDEV_STATE_REL;
     }
 }
 
@@ -153,9 +156,10 @@ void input_poll()
         int u = tb_up, d = tb_down, l = tb_left, r = tb_right;
         tb_up = tb_down = tb_left = tb_right = 0;
         interrupts();
-        if (u | d | l | r) {
+        if ((u | d | l | r) && !s_locked) {
             s_last_activity = millis();
-            if (!s_screen_off) { s_raw_dx += r - l; s_raw_dy += d - u; }
+            s_raw_dx += r - l;
+            s_raw_dy += d - u;
         }
     } else {
     // The hall sensors toggle many times per roll, so one step needs several edges.
@@ -196,16 +200,25 @@ void input_poll()
     fire(tb_right, tb_up, tb_down, tb_left, LV_KEY_RIGHT);
     }
 
-    // Trackball click: short = ENTER, long (>600 ms) = ESC
+    // Trackball click: short = ENTER, long (>600 ms) = ESC, held 2 s = lock.
+    // Locked, only a hold of about a second does anything: it unlocks.
     static uint32_t down_at = 0;
-    static bool was_down = false, long_sent = false;
+    static bool was_down = false, long_sent = false, lock_sent = false;
     bool down = digitalRead(BOARD_BOOT_PIN) == LOW;
-    if (down && !was_down) { down_at = millis(); long_sent = false; }
-    if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }
-    if (!down && was_down && !long_sent && millis() - down_at > 30 && s_tb_mode != TB_RAW) push_key(LV_KEY_ENTER);
-    if (down != was_down) s_last_activity = millis();
+    if (down && !was_down) { down_at = millis(); long_sent = lock_sent = false; }
+    if (s_locked) {
+        if (down && !lock_sent && millis() - down_at > 1000) {
+            lock_sent = long_sent = true;   // the release after an unlock is not a click
+            if (s_lock_hook) s_lock_hook(false);
+        }
+    } else {
+        if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }
+        if (down && !lock_sent && millis() - down_at > 2000) { lock_sent = true; if (s_lock_hook) s_lock_hook(true); }
+        if (!down && was_down && !long_sent && millis() - down_at > 30 && s_tb_mode != TB_RAW) push_key(LV_KEY_ENTER);
+        if (down != was_down) s_last_activity = millis();
+    }
     was_down = down;
-    s_tb_pressed = down && !long_sent && !s_screen_off;
+    s_tb_pressed = down && !long_sent && !s_locked;
 }
 
 uint32_t input_last_activity_ms() { return s_last_activity; }
