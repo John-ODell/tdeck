@@ -78,6 +78,10 @@ tiles.
 
 ESP-NOW on WiFi channel 1. Pairing is an X25519 exchange; both ends derive the ESP-NOW
 link key from it, so every packet after that is AES-CCM encrypted, and each also carries
-a truncated HMAC that the dongle checks. Keys are sent as press-and-release taps so a
-lost packet can't leave a key stuck down. The protocol is in
+a truncated HMAC that the dongle checks. Keys, mouse reports and pings also carry a
+counter under that HMAC, and the dongle drops anything it has already seen, so a recorded
+packet cannot be replayed. Keys are sent as press-and-release taps so a lost packet can't
+leave a key stuck down. The T-Deck and the dongle must be flashed from the same tree: a
+version mismatch is logged on the dongle's serial port and shown on the T-Deck's Keyboard
+page instead of silently typing nothing. The protocol is in
 [`../src/link/link_proto.h`](../src/link/link_proto.h), shared by both sides.
