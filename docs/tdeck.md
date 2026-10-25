@@ -65,7 +65,9 @@ The **Keyboard** app turns the T-Deck into a wireless keyboard and trackball mou
 
 The trackball is a mouse with a speed curve (slow rolls move a few pixels, flicks move far),
 a double-click for scroll mode, and a press-release-press-and-hold for drag. The GEEK's
-little screen shows the link state and the last keys typed.
+little screen shows the link state and the last keys typed. The typing screen on the T-Deck is
+a small editor that mirrors the computer's text field: a caret, insert and delete at it, and a
+tap in the text moves it, sending the computer the same number of arrow presses.
 
 The same link carries more than keystrokes:
 
@@ -77,7 +79,7 @@ The same link carries more than keystrokes:
   T-Deck at the same time. Notes sync to it, the to-do list syncs both ways, music pulls
   from it, and the Files app browses it over the air.
 
-![Keyboard](screenshots/tdeck-keyboard.png) ![GEEK dongle](screenshots/geek-connected.png)
+![Keyboard](screenshots/tdeck-keyboard.png) ![Typing](screenshots/tdeck-typing.png) ![GEEK dongle](screenshots/geek-connected.png)
 
 ### Everyday
 
@@ -99,8 +101,7 @@ The same link carries more than keystrokes:
 
 The screen fades after 10 seconds and locks, so keys pressed in a pocket do nothing. Holding
 the trackball for a second unlocks it; holding it for two seconds locks it on purpose. Every
-app is driven by the keyboard and trackball; the touch screen works too, except on the
-Keyboard app's typing screen where a thumb would hit it.
+app is driven by the keyboard and trackball; the touch screen works too.
 
 ![Launcher](screenshots/tdeck-launcher.png) ![About](screenshots/tdeck-about.png)
 
