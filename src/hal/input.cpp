@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "board.h"
+#include "core/settings.h"
 #include "TouchDrvGT911.hpp"
 
 static TouchDrvGT911 touch;
@@ -14,6 +15,9 @@ static bool s_screen_off = false;
 void input_set_screen_off(bool off) { s_screen_off = off; }
 
 static volatile int16_t tb_up = 0, tb_down = 0, tb_left = 0, tb_right = 0;
+static TrackballMode s_tb_mode = TB_FOCUS;
+static int s_raw_dx = 0, s_raw_dy = 0;
+static bool s_tb_pressed = false;
 static void IRAM_ATTR isr_up() { tb_up++; }
 static void IRAM_ATTR isr_down() { tb_down++; }
 static void IRAM_ATTR isr_left() { tb_left++; }
@@ -43,6 +47,16 @@ static uint32_t map_kb(uint8_t c)
     }
 }
 
+// An open dropdown list takes up/down itself; PREV/NEXT would jump focus away and close it
+static uint32_t route_key(uint32_t k)
+{
+    if (k != LV_KEY_PREV && k != LV_KEY_NEXT) return k;
+    lv_group_t *g = s_keypad ? s_keypad->group : nullptr;
+    lv_obj_t *f = g ? lv_group_get_focused(g) : nullptr;
+    if (f && lv_obj_check_type(f, &lv_dropdown_class) && lv_dropdown_is_open(f)) return k == LV_KEY_PREV ? LV_KEY_UP : LV_KEY_DOWN;
+    return k;
+}
+
 static void keypad_read(lv_indev_drv_t *, lv_indev_data_t *data)
 {
     static bool pressed = false;
@@ -54,7 +68,7 @@ static void keypad_read(lv_indev_drv_t *, lv_indev_data_t *data)
         return;
     }
     if (q_head != q_tail) {
-        last = q[q_head];
+        last = route_key(q[q_head]);
         q_head = (q_head + 1) % 16;
         pressed = true;
         data->key = last;
@@ -134,12 +148,53 @@ void input_poll()
         }
     }
 
-    // Two edges per detent
-    const int16_t step = 2;
-    while (tb_up >= step) { noInterrupts(); tb_up -= step; interrupts(); push_key(LV_KEY_PREV); }
-    while (tb_down >= step) { noInterrupts(); tb_down -= step; interrupts(); push_key(LV_KEY_NEXT); }
-    while (tb_left >= step) { noInterrupts(); tb_left -= step; interrupts(); push_key(LV_KEY_LEFT); }
-    while (tb_right >= step) { noInterrupts(); tb_right -= step; interrupts(); push_key(LV_KEY_RIGHT); }
+    if (s_tb_mode == TB_RAW) {
+        noInterrupts();
+        int u = tb_up, d = tb_down, l = tb_left, r = tb_right;
+        tb_up = tb_down = tb_left = tb_right = 0;
+        interrupts();
+        if (u | d | l | r) {
+            s_last_activity = millis();
+            if (!s_screen_off) { s_raw_dx += r - l; s_raw_dy += d - u; }
+        }
+    } else {
+    // The hall sensors toggle many times per roll, so one step needs several edges.
+    // Partial counts are dropped after a pause, and a step on one axis clears the
+    // other so a slightly diagonal roll doesn't also move sideways.
+    // A minimum gap between steps keeps a fast flick from racing through long lists.
+    static const int16_t EDGES[] = {10, 7, 5, 3, 2};          // by settings.trackball 1..5
+    static const uint16_t GAP_MS[] = {220, 160, 120, 80, 50};
+    const int sp = (settings.trackball >= 1 && settings.trackball <= 5 ? settings.trackball : 3) - 1;
+    const int16_t step = EDGES[sp];
+    static uint32_t last_fire_ms = 0;
+    const bool rate_ok = millis() - last_fire_ms >= GAP_MS[sp];
+    static uint32_t last_edge_ms = 0;
+    static int16_t seen = 0;
+    int16_t total = tb_up + tb_down + tb_left + tb_right;
+    if (total != seen) { seen = total; last_edge_ms = millis(); }
+    if (total && millis() - last_edge_ms > 250) {
+        noInterrupts(); tb_up = tb_down = tb_left = tb_right = 0; interrupts();
+        seen = 0;
+    }
+    auto fire = [&](volatile int16_t &axis, volatile int16_t &a, volatile int16_t &b, volatile int16_t &c, uint32_t key) {
+        if (axis < step) return;
+        if (!rate_ok) {
+            // Hold at most one pending step so nothing keeps scrolling after the roll stops
+            noInterrupts(); if (axis > step) axis = step; interrupts();
+            seen = tb_up + tb_down + tb_left + tb_right;
+            return;
+        }
+        noInterrupts(); axis -= step; a = b = c = 0; interrupts();
+        seen = axis;
+        last_fire_ms = millis();
+        push_key(key);
+    };
+    const bool arrows = s_tb_mode == TB_ARROWS;
+    fire(tb_up, tb_down, tb_left, tb_right, arrows ? LV_KEY_UP : LV_KEY_PREV);
+    fire(tb_down, tb_up, tb_left, tb_right, arrows ? LV_KEY_DOWN : LV_KEY_NEXT);
+    fire(tb_left, tb_up, tb_down, tb_right, LV_KEY_LEFT);
+    fire(tb_right, tb_up, tb_down, tb_left, LV_KEY_RIGHT);
+    }
 
     // Trackball click: short = ENTER, long (>600 ms) = ESC
     static uint32_t down_at = 0;
@@ -147,14 +202,35 @@ void input_poll()
     bool down = digitalRead(BOARD_BOOT_PIN) == LOW;
     if (down && !was_down) { down_at = millis(); long_sent = false; }
     if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }
-    if (!down && was_down && !long_sent && millis() - down_at > 30) push_key(LV_KEY_ENTER);
+    if (!down && was_down && !long_sent && millis() - down_at > 30 && s_tb_mode != TB_RAW) push_key(LV_KEY_ENTER);
+    if (down != was_down) s_last_activity = millis();
     was_down = down;
+    s_tb_pressed = down && !long_sent && !s_screen_off;
 }
 
 uint32_t input_last_activity_ms() { return s_last_activity; }
 bool input_keyboard_found() { return s_kb; }
 bool input_touch_found() { return s_touch; }
 void input_set_key_hook(input_key_hook_t hook) { s_hook = hook; }
+void input_inject_key(uint32_t key) { push_key(key); }
+
+void input_set_trackball_mode(TrackballMode m)
+{
+    noInterrupts();
+    tb_up = tb_down = tb_left = tb_right = 0;
+    interrupts();
+    s_raw_dx = s_raw_dy = 0;
+    s_tb_mode = m;
+}
+
+void input_trackball_take(int *dx, int *dy)
+{
+    *dx = s_raw_dx;
+    *dy = s_raw_dy;
+    s_raw_dx = s_raw_dy = 0;
+}
+
+bool input_trackball_pressed() { return s_tb_pressed; }
 
 void input_set_group(lv_group_t *g)
 {
