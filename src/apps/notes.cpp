@@ -6,10 +6,11 @@
 #include <time.h>
 #include <vector>
 #include "core/storage.h"
+#include "ui/theme.h"
 
-static lv_obj_t *s_root, *s_ta = nullptr;
+static lv_obj_t *s_root, *s_status = nullptr, *s_box = nullptr, *s_text = nullptr;
 static bool s_editing = false;
-static String s_path;
+static String s_path, s_buf;
 
 static fs::FS &store() { return sd_ok() ? (fs::FS &)SD : (fs::FS &)LittleFS; }
 
@@ -17,40 +18,59 @@ static void show_list();
 
 static void save()
 {
-    if (!s_ta) return;
-    const char *txt = lv_textarea_get_text(s_ta);
-    if (!txt[0]) {
+    if (!s_editing) return;
+    if (!s_buf.length()) {
         // An empty note is not worth keeping
         if (store().exists(s_path)) store().remove(s_path);
         return;
     }
     File f = store().open(s_path, "w");
     if (!f) { ui_toast("Save failed"); return; }
-    f.print(txt);
+    f.print(s_buf);
     f.close();
+}
+
+// The editor is the Keyboard app's typing screen with a file behind it: a status line, a
+// bordered box showing the buffer with a cursor mark, keys taken straight from the app hook.
+// No text area, so nothing blinks or re-lays out while typing.
+static void redraw()
+{
+    if (!s_text) return;
+    lv_label_set_text_fmt(s_text, "%s_", s_buf.c_str());
+    lv_label_set_text_fmt(s_status, "%s   %u chars   (long-click = save)", s_path.c_str() + 7, (unsigned)s_buf.length());
+    lv_obj_update_layout(s_box);
+    lv_obj_scroll_to_y(s_box, LV_COORD_MAX, LV_ANIM_OFF);
 }
 
 static void edit(const String &path)
 {
     s_editing = true;
     s_path = path;
+    s_buf = "";
+    File f = store().open(path, "r");
+    if (f) { s_buf = f.readString(); f.close(); }
     lv_obj_clean(s_root);
     lv_group_remove_all_objs(ui_group());
-    lv_obj_t *title = lv_label_create(s_root);
-    lv_label_set_text_fmt(title, "%s   (long-click to save)", path.c_str());
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_12, 0);
-    s_ta = lv_textarea_create(s_root);
-    lv_obj_set_size(s_ta, LV_PCT(100), 196);
-    lv_obj_set_y(s_ta, 16);
-    lv_textarea_set_max_length(s_ta, 8000);
-    File f = store().open(path, "r");
-    if (f) {
-        String body = f.readString();
-        f.close();
-        lv_textarea_set_text(s_ta, body.c_str());
-    }
-    lv_group_add_obj(ui_group(), s_ta);
-    lv_group_focus_obj(s_ta);
+
+    s_status = lv_label_create(s_root);
+    lv_obj_set_style_text_font(s_status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(s_status, T_DIM, 0);
+    lv_obj_set_width(s_status, LV_PCT(100));
+    lv_label_set_long_mode(s_status, LV_LABEL_LONG_CLIP);
+
+    s_box = lv_obj_create(s_root);
+    lv_obj_set_size(s_box, LV_PCT(100), 194);
+    lv_obj_set_y(s_box, 18);
+    lv_obj_set_style_bg_color(s_box, T_BG, 0);
+    lv_obj_set_style_border_color(s_box, T_DIM, 0);
+    lv_obj_set_style_border_width(s_box, 1, 0);
+    lv_obj_set_style_radius(s_box, 2, 0);
+    lv_obj_set_style_pad_all(s_box, 4, 0);
+    s_text = lv_label_create(s_box);
+    lv_label_set_long_mode(s_text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_text, LV_PCT(100));
+    lv_obj_set_style_text_font(s_text, t_font_mono, 0);
+    redraw();
 }
 
 static void new_note()
@@ -78,7 +98,7 @@ static std::vector<String> s_names;
 static void show_list()
 {
     s_editing = false;
-    s_ta = nullptr;
+    s_status = s_box = s_text = nullptr;
     lv_obj_clean(s_root);
     lv_group_remove_all_objs(ui_group());
     if (!store().exists("/notes")) store().mkdir("/notes");
@@ -115,8 +135,21 @@ static void show_list()
 
 static bool keys(uint32_t k)
 {
-    if (!s_editing && k == 'n') { new_note(); return true; }
-    return false;
+    if (!s_editing) {
+        if (k == 'n') { new_note(); return true; }
+        return false;
+    }
+    if (k == LV_KEY_ESC) return false; // on_back saves and leaves
+    if (k == LV_KEY_PREV || k == LV_KEY_NEXT) {
+        lv_obj_scroll_by_bounded(s_box, 0, k == LV_KEY_PREV ? 40 : -40, LV_ANIM_OFF);
+        return true;
+    }
+    if (k == LV_KEY_BACKSPACE) { if (s_buf.length()) s_buf.remove(s_buf.length() - 1); }
+    else if (k == LV_KEY_ENTER) s_buf += '\n';
+    else if (k >= 0x20 && k < 0x7F) { if (s_buf.length() < 8000) s_buf += (char)k; }
+    else return true; // other navigation keys mean nothing in a note
+    redraw();
+    return true;
 }
 
 static void open(lv_obj_t *parent)
@@ -143,7 +176,7 @@ static void close()
 {
     if (s_editing) save();
     s_editing = false;
-    s_ta = nullptr;
+    s_status = s_box = s_text = nullptr;
 }
 
 const App app_notes = {"Notes", LV_SYMBOL_EDIT, open, close, nullptr, on_back};
