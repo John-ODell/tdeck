@@ -130,6 +130,26 @@ static void render()
         }
     }
 
+    // Breadcrumbs under the markers: dim dots, fading toward the oldest
+    auto add_trail = [&](uint32_t num, lv_color_t color) {
+        nodedb::TrailPoint pts[nodedb::TRAIL_LEN];
+        size_t n = nodedb::trail(num, pts, nodedb::TRAIL_LEN);
+        for (size_t i = 0; i + 1 < n; i++) { // the newest point sits under the marker itself
+            double x = lon_to_x(pts[i].lon_i * 1e-7, s_zoom) - x0;
+            double y = lat_to_y(pts[i].lat_i * 1e-7, s_zoom) - y0;
+            if (x < -4 || x > 324 || y < -4 || y > VIEW_H + 4) continue;
+            lv_obj_t *d = lv_obj_create(s_view);
+            lv_obj_remove_style_all(d);
+            lv_obj_set_style_bg_color(d, color, 0);
+            lv_obj_set_style_bg_opa(d, (lv_opa_t)(60 + 160 * (i + 1) / n), 0);
+            lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_size(d, 3, 3);
+            lv_obj_set_pos(d, (lv_coord_t)x - 1, (lv_coord_t)y - 1);
+        }
+    };
+    for (size_t i = 0; i < nodedb::count(); i++) if (nodedb::at(i)->has_pos) add_trail(nodedb::at(i)->num, T_TEXT);
+    add_trail(mesh::our_num(), T_HEAD);
+
     size_t shown = 0;
     for (size_t i = 0; i < nodedb::count(); i++) {
         Node *n = nodedb::at(i);
