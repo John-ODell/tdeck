@@ -109,10 +109,14 @@ static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
     lv_obj_set_style_text_font(ml, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(ml, lv_color_hex(0xaab4c0), 0);
 
+    // Fixed width from the measured text: a wrapping SIZE_CONTENT label inside a
+    // SIZE_CONTENT bubble can wrap at a stale width on the first layout pass
     lv_obj_t *tl = lv_label_create(bubble);
     lv_label_set_long_mode(tl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_max_width(tl, 240, 0);
-    lv_obj_set_width(tl, LV_SIZE_CONTENT);
+    const lv_font_t *font = lv_obj_get_style_text_font(tl, LV_PART_MAIN);
+    lv_point_t sz;
+    lv_txt_get_size(&sz, m.text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_obj_set_width(tl, LV_MIN(sz.x + 1, 240));
     lv_label_set_text(tl, m.text);
 }
 
