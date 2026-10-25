@@ -5,6 +5,9 @@
 #include "hal/input.h"
 #include "ui/ui.h"
 #include "mesh/mesh.h"
+#include "core/storage.h"
+#include <SD.h>
+#include <LittleFS.h>
 
 static void shot()
 {
@@ -33,6 +36,39 @@ static void shot()
     }
     Serial.println("END");
     lv_snapshot_free(img);
+}
+
+// "flash:/x" forces internal flash; otherwise the SD card when mounted, else flash,
+// which is the rule the apps use for their files.
+static fs::FS &pick(const char *&path)
+{
+    if (!strncmp(path, "flash:", 6)) { path += 6; return LittleFS; }
+    return sd_ok() ? (fs::FS &)SD : (fs::FS &)LittleFS;
+}
+
+static void ls(const char *path)
+{
+    fs::FS &fs = pick(path);
+    File d = fs.open(*path ? path : "/");
+    if (!d || !d.isDirectory()) { Serial.println("LS no such directory"); return; }
+    Serial.printf("LS %s (%s)\n", path, &fs == (fs::FS *)&LittleFS ? "flash" : "sd");
+    while (File f = d.openNextFile()) {
+        Serial.printf("  %s%s  %lu\n", f.name(), f.isDirectory() ? "/" : "", (unsigned long)f.size());
+        f.close();
+    }
+    d.close();
+    Serial.println("END");
+}
+
+static void cat(const char *path)
+{
+    fs::FS &fs = pick(path);
+    File f = fs.open(path, "r");
+    if (!f || f.isDirectory()) { Serial.println("CAT no such file"); return; }
+    Serial.printf("CAT %s %lu\n", path, (unsigned long)f.size());
+    while (f.available()) Serial.write(f.read());
+    f.close();
+    Serial.println("\nEND");
 }
 
 static uint32_t parse_key(const char *k)
@@ -66,7 +102,9 @@ void console_poll()
             Serial.println(k ? "ok" : "bad key");
         } else if (!strcmp(line, "home")) { ui_go_home(); Serial.println("ok"); }
         else if (!strcmp(line, "shot")) shot();
+        else if (!strncmp(line, "ls ", 3)) ls(line + 3);
+        else if (!strncmp(line, "cat ", 4)) cat(line + 4);
         else if (!strcmp(line, "rssi")) mesh::debug_rssi();
-        else Serial.println("commands: open <app> | key <k> | home | shot");
+        else Serial.println("commands: open <app> | key <k> | home | shot | ls <dir> | cat <file>");
     }
 }
