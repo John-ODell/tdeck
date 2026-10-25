@@ -20,6 +20,7 @@
 #include <mbedtls/ecp.h>
 #include <Preferences.h>
 #include <FS.h>
+#include <mbedtls/base64.h>
 #include "link_proto.h"
 #ifdef GEEK_LCD
 #include <TFT_eSPI.h>
@@ -149,6 +150,7 @@ static void led(bool on)
 
 #ifdef GEEK_LCD
 static TFT_eSPI tft;
+static TFT_eSprite spr(&tft); // the whole screen, so it can be dumped over serial (#130)
 enum ScreenState { SCR_PAIRING, SCR_AWAY, SCR_ONLINE };
 static int s_scr_state = -1;
 static uint32_t s_scr_taps = (uint32_t)-1, s_scr_msg_ver = (uint32_t)-1;
@@ -158,62 +160,78 @@ static void screen_init()
     tft.init();
     tft.setRotation(1); // USB plug on the left, 240 wide
     tft.fillScreen(TFT_BLACK);
+    spr.setColorDepth(16);
+    spr.createSprite(240, 135);
+    spr.fillSprite(TFT_BLACK);
+}
+
+// {"get":"screen"}: the framebuffer as base64 RGB565, big-endian, row by row
+static void json_screen()
+{
+    const size_t n = 240 * 135 * 2;
+    static char out[((240 * 135 * 2 + 2) / 3) * 4 + 1];
+    size_t olen = 0;
+    if (mbedtls_base64_encode((unsigned char *)out, sizeof(out), &olen, (const unsigned char *)spr.getPointer(), n) != 0) return;
+    Serial.printf("{\"type\":\"screen\",\"w\":240,\"h\":135,\"fmt\":\"rgb565\",\"b64\":\"");
+    Serial.write((const uint8_t *)out, olen);
+    Serial.println("\"}");
 }
 
 // Dark background, phosphor green text, like the T-Deck
 static void screen_draw(ScreenState st)
 {
-    const uint16_t green = tft.color565(0x00, 0xff, 0x41), dim = tft.color565(0x1c, 0x8c, 0x3c);
-    const uint16_t amber = tft.color565(0xff, 0xb0, 0x30);
+    const uint16_t green = spr.color565(0x00, 0xff, 0x41), dim = spr.color565(0x1c, 0x8c, 0x3c);
+    const uint16_t amber = spr.color565(0xff, 0xb0, 0x30);
     if (st != s_scr_state) {
         s_scr_state = st;
         s_scr_taps = (uint32_t)-1;
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(dim, TFT_BLACK);
-        tft.drawString("T-DECK DONGLE", 6, 4, 2);
-        tft.setTextColor(st == SCR_ONLINE ? green : amber, TFT_BLACK);
+        spr.fillSprite(TFT_BLACK);
+        spr.setTextColor(dim, TFT_BLACK);
+        spr.drawString("T-DECK DONGLE", 6, 4, 2);
+        spr.setTextColor(st == SCR_ONLINE ? green : amber, TFT_BLACK);
         switch (st) {
         case SCR_PAIRING:
-            tft.drawString("Pairing", 6, 28, 4);
-            tft.setTextColor(dim, TFT_BLACK);
-            tft.drawString("On the T-Deck: Keyboard >", 6, 62, 2);
-            tft.drawString("Pair a dongle", 6, 80, 2);
+            spr.drawString("Pairing", 6, 28, 4);
+            spr.setTextColor(dim, TFT_BLACK);
+            spr.drawString("On the T-Deck: Keyboard >", 6, 62, 2);
+            spr.drawString("Pair a dongle", 6, 80, 2);
             break;
         case SCR_AWAY:
-            tft.drawString("T-Deck away", 6, 28, 4);
-            tft.setTextColor(dim, TFT_BLACK);
-            tft.drawString("Hold BOOT 2 s to pair again", 6, 62, 2);
+            spr.drawString("T-Deck away", 6, 28, 4);
+            spr.setTextColor(dim, TFT_BLACK);
+            spr.drawString("Hold BOOT 2 s to pair again", 6, 62, 2);
             break;
         case SCR_ONLINE:
-            tft.drawString("Connected", 6, 28, 4);
+            spr.drawString("Connected", 6, 28, 4);
             s_scr_msg_ver = (uint32_t)-1;
             break;
         }
         if (s_paired) {
             char mac[32];
             snprintf(mac, sizeof(mac), "T-Deck %02x:%02x:%02x", s_mac[3], s_mac[4], s_mac[5]);
-            tft.setTextColor(dim, TFT_BLACK);
-            tft.drawString(mac, 6, 116, 2);
+            spr.setTextColor(dim, TFT_BLACK);
+            spr.drawString(mac, 6, 116, 2);
         }
     }
     if (st == SCR_ONLINE && s_taps != s_scr_taps) {
         s_scr_taps = s_taps;
         char line[48];
         snprintf(line, sizeof(line), "%lu keys  %s", (unsigned long)s_taps, s_last);
-        tft.setTextColor(green, TFT_BLACK);
-        tft.setTextPadding(228);
-        tft.drawString(line, 6, 80, 2);
-        tft.setTextPadding(0);
+        spr.setTextColor(green, TFT_BLACK);
+        spr.setTextPadding(228);
+        spr.drawString(line, 6, 80, 2);
+        spr.setTextPadding(0);
     }
     if (st == SCR_ONLINE && s_msg_ver != s_scr_msg_ver) {
         s_scr_msg_ver = s_msg_ver;
         char line[40];
         strlcpy(line, s_last_msg, sizeof(line));
-        tft.setTextColor(dim, TFT_BLACK);
-        tft.setTextPadding(228);
-        tft.drawString(line, 6, 98, 2);
-        tft.setTextPadding(0);
+        spr.setTextColor(dim, TFT_BLACK);
+        spr.setTextPadding(228);
+        spr.drawString(line, 6, 98, 2);
+        spr.setTextPadding(0);
     }
+    spr.pushSprite(0, 0);
 }
 #endif
 
@@ -659,6 +677,9 @@ static void host_line(char *line)
     t.to = 0xFFFFFFFF;
     char to[12];
     if (*line == '{') {
+#ifdef GEEK_LCD
+        if (strstr(line, "\"get\"") && strstr(line, "\"screen\"")) { json_screen(); return; }
+#endif
         if (strstr(line, "\"get\"")) { json_link(); return; }   // {"get":"link"}: state on demand
         if (!json_get(line, "send", t.text, sizeof(t.text))) return;
         if (json_get(line, "to", to, sizeof(to))) t.to = strtoul(to, nullptr, 16);
