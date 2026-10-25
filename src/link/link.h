@@ -9,6 +9,7 @@ bool start();               // WiFi STA on LINK_CHANNEL + ESP-NOW; restores the 
 void stop();
 void tick();                // keepalive pings, pairing timeouts
 bool running();
+void ble_sharing(bool on);   // Bluetooth is up: WiFi must modem-sleep or the coexistence layer aborts
 
 bool paired();
 void peer_mac(uint8_t mac[6]);

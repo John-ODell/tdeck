@@ -9,6 +9,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
+#include "link/link.h"
 #include <algorithm>
 #include "mesh/mesh.h"
 #include "hal/input.h"
@@ -334,7 +335,7 @@ static SpectrumScanCb s_scan_cb;
 static bool ble_start()
 {
     memset(s_slots, 0, sizeof(s_slots));
-    if (!s_ble_inited) { NimBLEDevice::init(""); s_ble_inited = true; }
+    if (!s_ble_inited) { dongle::ble_sharing(true); NimBLEDevice::init(""); s_ble_inited = true; }
     NimBLEScan *scan = NimBLEDevice::getScan();
     scan->setAdvertisedDeviceCallbacks(&s_scan_cb, true);
     scan->setActiveScan(true); // scan responses carry most names
@@ -420,6 +421,7 @@ static void ble_stop()
     if (!s_ble_inited) return;
     NimBLEDevice::getScan()->stop();
     NimBLEDevice::deinit(true);
+    dongle::ble_sharing(false);
     s_ble_inited = false;
 }
 

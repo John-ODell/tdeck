@@ -2,6 +2,7 @@
 #include "ui/theme.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include "link/link.h"
 
 static lv_obj_t *s_list, *s_title;
 static volatile bool s_done = false;
@@ -43,6 +44,7 @@ static void scan_done(NimBLEScanResults) { s_done = true; }
 static void start_scan()
 {
     if (!s_inited) {
+        dongle::ble_sharing(true);
         NimBLEDevice::init("");
         s_inited = true;
     }
@@ -114,6 +116,7 @@ static void close()
     if (s_inited) {
         NimBLEDevice::getScan()->stop();
         NimBLEDevice::deinit(true);
+        dongle::ble_sharing(false);
         s_inited = false;
     }
     s_scanning = false;
