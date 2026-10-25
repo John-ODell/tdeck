@@ -10,6 +10,7 @@ static int s_app_count = 0;
 static const App *s_current = nullptr;
 static lv_obj_t *s_screen, *s_status, *s_status_left, *s_status_right, *s_content;
 static lv_group_t *s_group = nullptr;
+static lv_obj_t *s_grid = nullptr;
 static char s_extra[48] = "";
 static ui_key_hook_t s_app_hook = nullptr;
 
@@ -17,9 +18,32 @@ void ui_set_app_key_hook(ui_key_hook_t hook) { s_app_hook = hook; }
 
 static const int STATUS_H = 20;
 
+// Launcher: left/right step one tile, up/down jump a whole row of the grid. Nothing wraps,
+// so a long roll stops at the edge instead of landing on About.
+static bool launcher_nav(uint32_t key)
+{
+    if (!s_grid || (key != LV_KEY_LEFT && key != LV_KEY_RIGHT && key != LV_KEY_PREV && key != LV_KEY_NEXT)) return false;
+    int n = lv_obj_get_child_cnt(s_grid);
+    if (!n) return false;
+    lv_obj_t *f = lv_group_get_focused(s_group);
+    int i = f && lv_obj_get_parent(f) == s_grid ? lv_obj_get_index(f) : 0;
+    int cols = 1;
+    lv_coord_t y0 = lv_obj_get_y(lv_obj_get_child(s_grid, 0));
+    while (cols < n && lv_obj_get_y(lv_obj_get_child(s_grid, cols)) == y0) cols++;
+    switch (key) {
+    case LV_KEY_LEFT: i = i > 0 ? i - 1 : i; break;        // the ends stop, nothing wraps
+    case LV_KEY_RIGHT: i = i < n - 1 ? i + 1 : i; break;
+    case LV_KEY_PREV: i = i - cols >= 0 ? i - cols : i; break;
+    case LV_KEY_NEXT: i = i + cols < n ? i + cols : (i / cols < (n - 1) / cols ? n - 1 : i); break;
+    }
+    lv_group_focus_obj(lv_obj_get_child(s_grid, i));
+    return true;
+}
+
 static bool key_hook(uint32_t key)
 {
     if (s_app_hook && s_app_hook(key)) return true;
+    if (!s_current && launcher_nav(key)) return true;
     if (key != LV_KEY_ESC) return false;
     if (s_current && s_current->on_back && s_current->on_back()) return true;
     if (s_current) { ui_go_home(); return true; }
@@ -36,6 +60,7 @@ static void new_group()
 
 static void clear_content()
 {
+    s_grid = nullptr;
     lv_obj_clean(s_content);
     lv_obj_set_style_pad_all(s_content, 4, 0); // apps like Map change it
     lv_obj_scroll_to(s_content, 0, 0, LV_ANIM_OFF);
@@ -58,6 +83,7 @@ static void build_launcher()
     lv_obj_set_style_pad_row(grid, 8, 0);
     lv_obj_set_style_pad_top(grid, 6, 0);
     lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+    s_grid = grid;
 
     for (int i = 0; i < s_app_count; i++) {
         lv_obj_t *btn = lv_btn_create(grid);
@@ -70,6 +96,10 @@ static void build_launcher()
         lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
         lv_obj_t *label = lv_label_create(btn);
         lv_label_set_text(label, s_apps[i]->name);
+        // Names wider than the tile scroll instead of clipping
+        lv_obj_set_width(label, 86);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
         lv_obj_add_event_cb(btn, launcher_clicked, LV_EVENT_CLICKED, (void *)s_apps[i]);
         lv_group_add_obj(s_group, btn);
         lv_obj_add_event_cb(btn, [](lv_event_t *e) {
@@ -116,6 +146,9 @@ void ui_register_app(const App *app)
 {
     if (s_app_count < 24) s_apps[s_app_count++] = app;
 }
+
+// The display and the SD card share one SPI bus, and the first frame of an app that reads
+// the card has been seen to reach the panel with a band missing (launcher tiles left over
 
 void ui_open_app(const App *app)
 {
