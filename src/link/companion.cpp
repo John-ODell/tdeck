@@ -269,7 +269,13 @@ static void push_tick()
         if (!s_fh) { s_push_i++; return; }
         LinkFileBegin b = {};
         b.size = s_fh.size();
-        b.mtime = s_fh.getLastWrite();
+        // FAT keeps local time with no zone and the dongle knows no zone, so the epoch goes
+        // shifted by our UTC offset: the card then shows the time the Notes app does (#59)
+        time_t t = s_fh.getLastWrite();
+        struct tm g;
+        gmtime_r(&t, &g);
+        g.tm_isdst = -1;
+        b.mtime = t ? (uint32_t)(t + (t - mktime(&g))) : 0;
         strlcpy(b.name, s_push[s_push_i].remote.c_str(), sizeof(b.name));
         if (s_push.size() > 1) set_status("pushing %u/%u", (unsigned)(s_push_i + 1), (unsigned)s_push.size());
         else set_status("pushing");
