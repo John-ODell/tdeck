@@ -1,4 +1,5 @@
 #include "nodedb.h"
+#include <math.h>
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <algorithm>
@@ -97,6 +98,46 @@ const char *display_name(uint32_t num, char *buf, size_t cap)
     if (n && n->has_user && n->long_name[0]) strlcpy(buf, n->long_name, cap);
     else snprintf(buf, cap, "!%08x", (unsigned)num);
     return buf;
+}
+
+// ---- breadcrumbs -----------------------------------------------------------------
+struct Trail { uint32_t num; uint8_t head, len; TrailPoint pts[TRAIL_LEN]; };
+static const size_t TRAILS = 24;
+static Trail s_trails[TRAILS];
+static size_t s_trail_next = 0; // the slot a new node takes once all are used
+
+static Trail *trail_slot(uint32_t num, bool create)
+{
+    for (size_t i = 0; i < TRAILS; i++) if (s_trails[i].len && s_trails[i].num == num) return &s_trails[i];
+    if (!create) return nullptr;
+    for (size_t i = 0; i < TRAILS; i++) if (!s_trails[i].len) { s_trails[i].num = num; s_trails[i].head = 0; return &s_trails[i]; }
+    Trail *t = &s_trails[s_trail_next++ % TRAILS];
+    t->num = num;
+    t->head = t->len = 0;
+    return t;
+}
+
+void trail_add(uint32_t num, int32_t lat_i, int32_t lon_i)
+{
+    Trail *t = trail_slot(num, true);
+    if (t->len) {
+        const TrailPoint &last = t->pts[(t->head + t->len - 1) % TRAIL_LEN];
+        // About 25 m: 1e-7 degrees is 1.1 cm of latitude, longitude scaled by cos(lat)
+        double dlat = (lat_i - last.lat_i) * 0.0111;
+        double dlon = (lon_i - last.lon_i) * 0.0111 * cos(lat_i * 1e-7 * M_PI / 180.0);
+        if (dlat * dlat + dlon * dlon < 25.0 * 25.0) return;
+    }
+    if (t->len < TRAIL_LEN) t->pts[(t->head + t->len++) % TRAIL_LEN] = {lat_i, lon_i};
+    else { t->pts[t->head] = {lat_i, lon_i}; t->head = (t->head + 1) % TRAIL_LEN; }
+}
+
+size_t trail(uint32_t num, TrailPoint *out, size_t max)
+{
+    Trail *t = trail_slot(num, false);
+    if (!t) return 0;
+    size_t n = t->len < max ? t->len : max;
+    for (size_t i = 0; i < n; i++) out[i] = t->pts[(t->head + i) % TRAIL_LEN];
+    return n;
 }
 
 } // namespace nodedb
