@@ -11,9 +11,11 @@ static lv_indev_t *s_keypad = nullptr, *s_pointer = nullptr;
 static uint32_t s_last_activity = 0;
 static input_key_hook_t s_hook = nullptr;
 static bool s_locked = false;
+static bool s_touch_on = true;
 static input_lock_hook_t s_lock_hook = nullptr;
 
 void input_set_locked(bool locked) { s_locked = locked; }
+void input_set_touch(bool on) { s_touch_on = on; }
 bool input_locked() { return s_locked; }
 void input_set_lock_hook(input_lock_hook_t hook) { s_lock_hook = hook; }
 
@@ -87,7 +89,7 @@ static void touch_read(lv_indev_drv_t *, lv_indev_data_t *data)
 {
     static int16_t x[1], y[1];
     data->state = LV_INDEV_STATE_REL;
-    if (s_touch && touch.isPressed() && touch.getPoint(x, y, 1) > 0) {
+    if (s_touch && s_touch_on && touch.isPressed() && touch.getPoint(x, y, 1) > 0) {
         data->state = LV_INDEV_STATE_PR;
         data->point.x = x[0];
         data->point.y = y[0];
@@ -212,9 +214,9 @@ void input_poll()
             if (s_lock_hook) s_lock_hook(false);
         }
     } else if (s_tb_mode == TB_RAW) {
-        // Mouse mode: the hold is the drag (#48). Only a 5 s hold does anything else: it
-        // leaves typing, for when the screen can't be tapped.
-        if (down && !long_sent && millis() - down_at > 5000) { long_sent = true; push_key(LV_KEY_ESC); }
+        // Mouse mode: the hold is the drag (#48). Only a 3 s hold does anything else: it
+        // leaves typing (#119).
+        if (down && !long_sent && millis() - down_at > 3000) { long_sent = true; push_key(LV_KEY_ESC); }
         if (down != was_down) s_last_activity = millis();
     } else {
         if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }
