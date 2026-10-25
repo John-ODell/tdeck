@@ -96,10 +96,12 @@ static void build_launcher()
         lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
         lv_obj_t *label = lv_label_create(btn);
         lv_label_set_text(label, s_apps[i]->name);
-        // Names wider than the tile scroll instead of clipping
+        // The proportional font fits every name in the tile; the mono font is twice as wide
+        // and had the long names ("Compass", "Spectrum", "Keyboard") rolling mid-word
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
         lv_obj_set_width(label, 86);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
         lv_obj_add_event_cb(btn, launcher_clicked, LV_EVENT_CLICKED, (void *)s_apps[i]);
         lv_group_add_obj(s_group, btn);
         lv_obj_add_event_cb(btn, [](lv_event_t *e) {
