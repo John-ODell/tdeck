@@ -9,7 +9,9 @@
 #include "ui/util.h"
 
 static lv_obj_t *s_root = nullptr, *s_list = nullptr, *s_ta = nullptr;
-static bool s_in_thread = false;
+static bool s_in_thread = false, s_picking = false;
+static void show_picker();
+static void show_thread(uint32_t peer); // s_picking: the node picker for a new DM
 static uint32_t s_peer = mt::BROADCAST;
 static uint32_t s_seen_version = 0;
 static uint32_t s_pending_peer = 0; // set by chat_open_peer before the app opens
@@ -34,10 +36,17 @@ static void conv_clicked(lv_event_t *e)
     show_thread((uint32_t)(uintptr_t)lv_event_get_user_data(e));
 }
 
+static bool list_keys(uint32_t k)
+{
+    if (k == 'n') { show_picker(); return true; }
+    return false;
+}
+
 static void show_list()
 {
     s_in_thread = false;
-    ui_set_app_key_hook(nullptr);
+    s_picking = false;
+    ui_set_app_key_hook(list_keys);
     lv_obj_clean(s_root);
     lv_group_remove_all_objs(ui_group());
     s_list = lv_list_create(s_root);
@@ -70,8 +79,39 @@ static void show_list()
         b = ui_list_btn(s_list, LV_SYMBOL_ENVELOPE, text);
         lv_obj_add_event_cb(b, conv_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)peers[i]);
     }
-    ui_list_text(s_list, "Start a DM from the Nodes app");
+    b = ui_list_btn(s_list, LV_SYMBOL_PLUS, "New DM");
+    lv_obj_add_event_cb(b, [](lv_event_t *) { show_picker(); }, LV_EVENT_CLICKED, nullptr);
     s_seen_version = messages::version();
+}
+
+// Every node heard, most recent first; picking one opens its thread (#139)
+static void show_picker()
+{
+    s_picking = true;
+    ui_set_app_key_hook(nullptr);
+    lv_obj_clean(s_root);
+    lv_group_remove_all_objs(ui_group());
+    s_list = lv_list_create(s_root);
+    lv_obj_set_size(s_list, LV_PCT(100), LV_PCT(100));
+    nodedb::sort_by_last_heard();
+    uint32_t me = mesh::our_num();
+    size_t shown = 0;
+    for (size_t i = 0; i < nodedb::count(); i++) {
+        Node *n = nodedb::at(i);
+        if (!n || n->num == me) continue;
+        char name[44], text[80];
+        nodedb::display_name(n->num, name, sizeof(name));
+        char ago[16];
+        fmt_age(n->last_heard, ago, sizeof(ago));
+        snprintf(text, sizeof(text), "%s  %s%s", name, ago, n->has_key ? "" : "  (no key yet)");
+        lv_obj_t *b = ui_list_btn(s_list, LV_SYMBOL_ENVELOPE, text);
+        lv_obj_add_event_cb(b, [](lv_event_t *e) {
+            s_picking = false;
+            show_thread((uint32_t)(uintptr_t)lv_event_get_user_data(e));
+        }, LV_EVENT_CLICKED, (void *)(uintptr_t)n->num);
+        shown++;
+    }
+    if (!shown) ui_list_text(s_list, "No nodes heard yet");
 }
 
 static void add_bubble(lv_obj_t *parent, const Message &m, bool mine)
@@ -229,18 +269,18 @@ static void tick()
     if (s_in_thread) {
         // Keep a draft intact while refreshing
         fill_thread();
-    } else {
+    } else if (!s_picking) {
         show_list();
     }
 }
 
 static bool on_back()
 {
-    if (s_in_thread) { show_list(); return true; }
+    if (s_in_thread || s_picking) { s_picking = false; show_list(); return true; }
     return false;
 }
 
-static void close() { s_root = s_list = s_ta = nullptr; s_in_thread = false; }
+static void close() { s_root = s_list = s_ta = nullptr; s_in_thread = s_picking = false; }
 
 void chat_open_peer(uint32_t peer)
 {
