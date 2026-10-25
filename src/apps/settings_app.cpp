@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "hal/audio.h"
 #include "ui/theme.h"
 #include <Arduino.h>
 #include "core/settings.h"
@@ -7,7 +8,7 @@
 #include "hal/display.h"
 #include "hal/power.h"
 
-static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay, *s_tone;
+static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay, *s_tone, *s_tone_vol;
 static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
@@ -91,6 +92,8 @@ static void save_clicked(lv_event_t *)
     settings.brightness = lv_slider_get_value(s_bright);
     settings.trackball = lv_slider_get_value(s_tball);
     settings.chat_tone = lv_obj_has_state(s_tone, LV_STATE_CHECKED);
+    settings.tone_volume = lv_dropdown_get_selected(s_tone_vol);
+    audio_tone_level(settings.tone_volume);
     settings.screen_timeout_s = TIMEOUTS[lv_dropdown_get_selected(s_timeout)];
     settings.tz_offset_min = TZ_VALUES[lv_dropdown_get_selected(s_tz)];
     settings_save();
@@ -181,6 +184,13 @@ static void open(lv_obj_t *parent)
     if (settings.chat_tone) lv_obj_add_state(s_tone, LV_STATE_CHECKED);
     lv_obj_align(s_tone, LV_ALIGN_RIGHT_MID, 0, 0);
     add_focus(s_tone);
+    s_tone_vol = dropdown_row(col, "Tone volume", "Quiet\nNormal\nLoud", settings.tone_volume);
+    // Live, with a sample, so the level can be heard before saving
+    lv_obj_add_event_cb(s_tone_vol, [](lv_event_t *) {
+        settings.tone_volume = lv_dropdown_get_selected(s_tone_vol);
+        audio_tone_level(settings.tone_volume);
+        audio_tone(1760, 80);
+    }, LV_EVENT_VALUE_CHANGED, nullptr);
 
     int to_idx = 0;
     for (int i = 0; i < 7; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
