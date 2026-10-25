@@ -1,4 +1,5 @@
 #include "display.h"
+#include <SPI.h>
 #include "ui/theme.h"
 #include <Arduino.h>
 #include <TFT_eSPI.h>
@@ -41,6 +42,16 @@ static void disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *c
 {
     uint32_t w = area->x2 - area->x1 + 1;
     uint32_t h = area->y2 - area->y1 + 1;
+    // The SD card and the LoRa radio share this bus and run SPI mode 0 (clock idles low);
+    // the ST7789 runs mode 3 (clock idles high). On the ESP32-S3 a new mode only reaches
+    // the clock pin when the SPI registers are latched, which TFT_eSPI does with the first
+    // byte it sends, after it has already pulled the panel's chip select low. The panel
+    // then sees the clock jump as a stray edge and the first block after an SD or radio
+    // access is lost (#94). One throwaway byte in the panel's mode with every chip select
+    // high puts the clock in the right place before the panel is selected.
+    SPI.beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, TFT_SPI_MODE));
+    SPI.transfer(0x00);
+    SPI.endTransaction();
     tft.startWrite();
     tft.setAddrWindow(area->x1, area->y1, w, h);
     tft.pushColors((uint16_t *)&color_p->full, w * h, false);

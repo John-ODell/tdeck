@@ -10,7 +10,7 @@ static bool s_scanning = false, s_inited = false;
 static const NimBLEUUID MESHTASTIC_SVC("6ba1b218-15a8-461f-9fa8-5dcae273eafd");
 
 // Identify common item trackers and Meshtastic nodes from the advertisement
-static const char *classify(NimBLEAdvertisedDevice *d)
+const char *ble_classify(NimBLEAdvertisedDevice *d)
 {
     for (uint8_t i = 0; i < d->getServiceUUIDCount(); i++) {
         NimBLEUUID u = d->getServiceUUID(i);
@@ -66,7 +66,7 @@ static void show_results()
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < n; i++) {
             NimBLEAdvertisedDevice d = r.getDevice(i);
-            const char *kind = classify(&d);
+            const char *kind = ble_classify(&d);
             bool tracker = !strncmp(kind, "TRACKER", 7);
             if ((pass == 0) != tracker) continue;
             if (tracker) trackers++;
