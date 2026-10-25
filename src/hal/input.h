@@ -17,3 +17,11 @@ void input_set_key_hook(input_key_hook_t hook);
 void input_inject_key(uint32_t key);  // as if typed (debug console)
 // While the screen is off, input only counts as activity (the waking key is dropped)
 void input_set_screen_off(bool off);
+
+// Trackball modes. FOCUS: PREV/NEXT/LEFT/RIGHT steps (default). ARROWS: UP/DOWN/LEFT/RIGHT
+// steps. RAW: no keys; edges accumulate for input_trackball_take() and a click is a held
+// button (input_trackball_pressed) instead of ENTER. A long click is ESC in every mode.
+enum TrackballMode { TB_FOCUS, TB_ARROWS, TB_RAW };
+void input_set_trackball_mode(TrackballMode m);
+void input_trackball_take(int *dx, int *dy);
+bool input_trackball_pressed();
