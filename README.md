@@ -93,6 +93,7 @@ At 115200 baud, over the USB port, one command per line:
 | `open <app>` | Opens an app by name, e.g. `open Spectrum` |
 | `key <k>` | Injects a key: `enter`, `esc`, `up`, `down`, `left`, `right` or one character |
 | `home` | Back to the launcher |
+| `ls <dir>` / `cat <file>` | List a directory / print a file from the SD card (or internal flash without one; `flash:/x` forces flash) |
 | `shot` | Screenshot: `SHOT <w> <h>`, base64 RGB565 little-endian lines, then `END` |
 | `rssi` | SX1262 instantaneous RSSI at several settle times (sweep diagnostics) |
 
