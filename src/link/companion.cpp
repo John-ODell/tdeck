@@ -16,8 +16,9 @@
 namespace companion {
 
 static bool s_enabled = false;
-static size_t s_seen = 0;       // messages already forwarded
-static uint32_t s_seen_id = 0;  // newest forwarded id, for when the store is full and rotates
+static uint32_t s_fwd_id = 0;   // newest message id forwarded to the dongle
+static uint32_t s_fwd_at = 0;
+static const size_t RELAY_BACKLOG = 20; // the most that goes out at once when the link returns
 
 static fs::FS &store() { return sd_ok() ? (fs::FS &)SD : (fs::FS &)LittleFS; }
 
@@ -39,22 +40,21 @@ static void forward(const Message &m)
     dongle::send_blob(BLOB_TEXT_EVENT, &e, n);
 }
 
+// Messages newer than the last one forwarded go out one at a time, 50 ms apart, so a
+// burst never overruns the ESP-NOW send buffer. While the dongle is away nothing moves,
+// and when it is back the catch-up is capped at RELAY_BACKLOG: a two-second dropout loses
+// nothing, a day away does not flood the serial port (#54).
 static void relay_tick()
 {
     size_t n = messages::count();
-    if (!dongle::online()) {
-        // No backlog: whatever came in while the dongle was away stays on the T-Deck
-        s_seen = n;
-        if (n) s_seen_id = messages::at(n - 1)->id;
-        return;
-    }
-    if (n > s_seen) {
-        for (size_t i = s_seen; i < n; i++) forward(*messages::at(i));
-    } else if (n == messages::CAPACITY && n && messages::at(n - 1)->id != s_seen_id) {
-        forward(*messages::at(n - 1)); // store is full and rotated under us
-    }
-    s_seen = n;
-    if (n) s_seen_id = messages::at(n - 1)->id;
+    if (!n || !dongle::online() || millis() - s_fwd_at < 50) return;
+    size_t i = n;
+    while (i > 0 && messages::at(i - 1)->id != s_fwd_id) i--;
+    if (i == 0 && n > RELAY_BACKLOG) i = n - RELAY_BACKLOG; // never forwarded, or rotated away
+    if (i >= n) return;
+    forward(*messages::at(i));
+    s_fwd_id = messages::at(i)->id;
+    s_fwd_at = millis();
 }
 
 // ---- transfers -----------------------------------------------------------------
@@ -334,8 +334,8 @@ void init()
     s_enabled = p.getUChar("relay", 0) != 0;
     p.end();
     dongle::set_blob_cb(on_blob);
-    s_seen = messages::count();
-    if (s_seen) s_seen_id = messages::at(s_seen - 1)->id;
+    size_t n = messages::count();
+    s_fwd_id = n ? messages::at(n - 1)->id : 0; // the stored history is not replayed on boot
     if (s_enabled) {
         dongle::start(); // loads the pairing; nothing to relay to without one
         if (!dongle::paired()) dongle::stop();
@@ -365,8 +365,8 @@ void set_enabled(bool on)
     p.end();
     if (on) {
         dongle::start();
-        s_seen = messages::count();
-        if (s_seen) s_seen_id = messages::at(s_seen - 1)->id;
+        size_t n = messages::count();
+        s_fwd_id = n ? messages::at(n - 1)->id : 0; // only what arrives from now on
     }
 }
 
