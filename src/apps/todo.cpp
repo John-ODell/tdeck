@@ -51,13 +51,40 @@ static void parse(const String &body, std::vector<Item> &out)
     }
 }
 
+static void read_list(fs::FS &fs, std::vector<Item> &out)
+{
+    File f = fs.open(LOCAL, "r");
+    if (!f) return;
+    parse(f.readString(), out);
+    f.close();
+}
+
+// Items from another copy folded in: new items are added, an item done on either side is done
+static void merge_into(std::vector<Item> &mine, const std::vector<Item> &theirs)
+{
+    for (auto &t : theirs) {
+        bool found = false;
+        for (auto &m : mine)
+            if (m.text == t.text) { m.done = m.done || t.done; found = true; break; }
+        if (!found) mine.push_back(t);
+    }
+}
+
+static void save();
+
+// The list lives on the card when there is one and on internal flash otherwise. The card
+// mount does not succeed on every boot, so the two copies can drift apart (#98): load both,
+// merge them, and once the card holds the result retire the flash copy.
 static void load()
 {
     s_items.clear();
-    File f = store().open(LOCAL, "r");
-    if (!f) return;
-    parse(f.readString(), s_items);
-    f.close();
+    read_list(store(), s_items);
+    if (!sd_ok() || !LittleFS.exists(LOCAL)) return;
+    std::vector<Item> stale;
+    read_list(LittleFS, stale);
+    merge_into(s_items, stale);
+    save();
+    if (SD.exists(LOCAL)) LittleFS.remove(LOCAL);
 }
 
 static void save()
@@ -77,12 +104,7 @@ static void merge_pulled()
     parse(f.readString(), theirs);
     f.close();
     store().remove(PULLED);
-    for (auto &t : theirs) {
-        bool found = false;
-        for (auto &m : s_items)
-            if (m.text == t.text) { m.done = m.done || t.done; found = true; break; }
-        if (!found) s_items.push_back(t);
-    }
+    merge_into(s_items, theirs);
 }
 
 // ---- sync ---------------------------------------------------------------------------
