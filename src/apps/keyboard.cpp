@@ -23,6 +23,9 @@ static lv_obj_t *s_term, *s_term_box, *s_live_status, *s_pair_list, *s_pair_note
 static bool s_in_live = false, s_in_pair = false, s_pairing = false;
 static char s_echo[512];
 static size_t s_echo_len = 0;
+static size_t s_caret = 0;          // insert point in s_echo (#155)
+static lv_obj_t *s_caret_obj;       // the drawn caret, a child of the text label
+static int s_arrows_due = 0;        // Left (<0) or Right (>0) presses still to send so the computer's cursor follows a tap
 static uint8_t s_buttons = 0;
 static uint8_t s_pair_macs[4][6];
 static size_t s_pair_count = (size_t)-1;
@@ -179,25 +182,62 @@ static void show(lv_obj_t *view)
 static void echo_redraw()
 {
     lv_label_set_text(s_term, s_echo);
+    lv_obj_update_layout(s_term);
+    lv_point_t pos;
+    lv_label_get_letter_pos(s_term, s_caret, &pos);
+    lv_obj_set_pos(s_caret_obj, pos.x, pos.y);
     lv_obj_update_layout(s_term_box);
-    lv_obj_scroll_to_y(s_term_box, LV_COORD_MAX, LV_ANIM_OFF);
+    lv_obj_scroll_to_view(s_caret_obj, LV_ANIM_OFF);
 }
 
+// The box mirrors the computer's text field as far as a keyboard can tell: typing inserts
+// at the caret, backspace deletes before it, left and right move it (#155)
 static void echo(uint8_t c)
 {
     if (c == 0x08) {
-        if (s_echo_len) s_echo[--s_echo_len] = 0;
+        if (!s_caret) return;
+        memmove(s_echo + s_caret - 1, s_echo + s_caret, s_echo_len - s_caret + 1);
+        s_caret--;
+        s_echo_len--;
     } else {
         if (s_echo_len + 2 >= sizeof(s_echo)) {
             // Keep the newer half
-            size_t keep = s_echo_len / 2;
-            memmove(s_echo, s_echo + s_echo_len - keep, keep);
+            size_t keep = s_echo_len / 2, drop = s_echo_len - keep;
+            memmove(s_echo, s_echo + drop, keep + 1);
             s_echo_len = keep;
+            s_caret = s_caret > drop ? s_caret - drop : 0;
         }
-        s_echo[s_echo_len++] = c == '\r' ? '\n' : c;
-        s_echo[s_echo_len] = 0;
+        memmove(s_echo + s_caret + 1, s_echo + s_caret, s_echo_len - s_caret + 1);
+        s_echo[s_caret++] = c == '\r' ? '\n' : c;
+        s_echo_len++;
     }
     echo_redraw();
+}
+
+static void caret_move(int d)
+{
+    if (d < 0 && s_caret < (size_t)-d) d = -(int)s_caret;
+    if (d > 0 && s_caret + d > s_echo_len) d = s_echo_len - s_caret;
+    s_caret += d;
+    echo_redraw();
+}
+
+// A tap in the text puts the caret on that letter and queues the arrow presses that move the
+// computer's cursor the same distance
+static void term_clicked(lv_event_t *)
+{
+    lv_indev_t *in = lv_indev_get_act();
+    if (!in) return;
+    lv_point_t p;
+    lv_indev_get_point(in, &p);
+    lv_area_t a;
+    lv_obj_get_coords(s_term, &a);
+    p.x -= a.x1;
+    p.y -= a.y1;
+    uint32_t idx = lv_label_get_letter_on(s_term, &p);
+    if (idx > s_echo_len) idx = s_echo_len;
+    s_arrows_due += (int)idx - (int)s_caret;
+    caret_move((int)idx - (int)s_caret);
 }
 
 static void enter_live()
@@ -205,9 +245,7 @@ static void enter_live()
     s_scroll = false;
     s_in_live = true;
     s_buttons = 0;
-    // The thumb lands on the panel while typing: a stray touch would type into the echo or move
-    // the mouse, and once wiped the pairing (#119). Touch is off here and back on the setup page (#153).
-    input_set_touch(false);
+    s_arrows_due = 0;
     input_set_trackball_mode(s_ball == B_MOUSE ? TB_RAW : TB_ARROWS);
     show(s_live);
 }
@@ -217,7 +255,7 @@ static void leave_live()
     if (s_buttons) out_mouse(0, 0, 0);
     s_buttons = 0;
     s_in_live = false;
-    input_set_touch(true);
+    s_arrows_due = 0;
     input_set_trackball_mode(TB_FOCUS);
     show(s_setup);
 }
@@ -254,8 +292,8 @@ static bool keys(uint32_t k)
     switch (k) {
     case LV_KEY_UP: usage = HID_UP; break;
     case LV_KEY_DOWN: usage = HID_DOWN; break;
-    case LV_KEY_LEFT: usage = HID_LEFT; break;
-    case LV_KEY_RIGHT: usage = HID_RIGHT; break;
+    case LV_KEY_LEFT: usage = HID_LEFT; caret_move(-1); break;
+    case LV_KEY_RIGHT: usage = HID_RIGHT; caret_move(1); break;
     default:
         if (k > 0xFF || !hid_from_ascii((uint8_t)k, &mod, &usage)) return true;
         if (k >= 0x20 || k == '\n' || k == '\r' || k == 0x08) echo((uint8_t)k);
@@ -379,10 +417,21 @@ static void build_live(lv_obj_t *parent)
     s_live_status = lv_label_create(s_live);
     lv_obj_set_style_text_font(s_live_status, &lv_font_montserrat_12, 0);
     lv_obj_set_width(s_live_status, LV_PCT(100));
+    lv_obj_set_y(s_live_status, 6);
     lv_label_set_long_mode(s_live_status, LV_LABEL_LONG_CLIP);
     s_term_box = lv_obj_create(s_live);
-    lv_obj_set_size(s_term_box, LV_PCT(100), 190);
-    lv_obj_set_y(s_term_box, 18);
+    lv_obj_set_size(s_term_box, LV_PCT(100), 160);
+    lv_obj_set_y(s_term_box, 22);
+    lv_obj_add_event_cb(s_term_box, term_clicked, LV_EVENT_CLICKED, nullptr);
+    // Close by touch; Esc and the trackball hold still work (#155)
+    lv_obj_t *cb = lv_btn_create(s_live);
+    lv_obj_set_size(cb, LV_PCT(100), 28);
+    lv_obj_align(cb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_text_font(cb, &lv_font_montserrat_14, 0);
+    lv_obj_t *cl = lv_label_create(cb);
+    lv_label_set_text(cl, LV_SYMBOL_CLOSE "  Close");
+    lv_obj_center(cl);
+    lv_obj_add_event_cb(cb, [](lv_event_t *) { leave_live(); }, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_style_bg_color(s_term_box, T_BG, 0);
     lv_obj_set_style_border_color(s_term_box, T_DIM, 0);
     lv_obj_set_style_border_width(s_term_box, 1, 0);
@@ -392,6 +441,12 @@ static void build_live(lv_obj_t *parent)
     lv_label_set_long_mode(s_term, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_term, LV_PCT(100));
     lv_obj_set_style_text_font(s_term, t_font_mono, 0);
+    s_caret_obj = lv_obj_create(s_term);
+    lv_obj_remove_style_all(s_caret_obj);
+    lv_obj_set_size(s_caret_obj, 2, lv_font_get_line_height(t_font_mono));
+    lv_obj_set_style_bg_color(s_caret_obj, T_HEAD, 0);
+    lv_obj_set_style_bg_opa(s_caret_obj, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_caret_obj, LV_OBJ_FLAG_CLICKABLE);
     echo_redraw();
 }
 
@@ -520,6 +575,12 @@ static void tick()
         }
     }
     if (s_in_live && s_ball == B_MOUSE) mouse_tick();
+    static uint32_t arrow_at = 0;
+    if (s_in_live && s_arrows_due && millis() - arrow_at >= 10) {
+        arrow_at = millis();
+        out_tap(0, s_arrows_due < 0 ? HID_LEFT : HID_RIGHT);
+        s_arrows_due += s_arrows_due < 0 ? 1 : -1;
+    }
 }
 
 static void close()
