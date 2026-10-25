@@ -7,6 +7,7 @@
 #include <math.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <ctype.h>
 #include "core/nodedb.h"
 #include "core/storage.h"
 #include "mesh/mesh.h"
@@ -78,6 +79,63 @@ static void add_marker(double x0, double y0, int32_t lat_i, int32_t lon_i, const
     lv_obj_set_pos(l, (lv_coord_t)x + 7, (lv_coord_t)y - 8);
 }
 
+// Where the tiles are (#145): the bounding box of the tiles at one zoom, scanned once per
+// zoom and kept, plus the range of zoom folders for the info line.
+struct Coverage { int z = -1; bool ok = false; int x0, x1, y0, y1; };
+static Coverage s_cov;
+static int s_zmin = 0, s_zmax = 0;   // zoom folders present, 0 = none
+
+static void scan_zooms()
+{
+    s_zmin = s_zmax = 0;
+    s_cov.z = -1;
+    if (!s_tile_root[0]) return;
+    char path[64];
+    snprintf(path, sizeof(path), "/sd%s", s_tile_root);
+    DIR *d = opendir(path);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        int z = atoi(e->d_name);
+        if (z <= 0 || z > 19 || !isdigit((unsigned char)e->d_name[0])) continue;
+        if (!s_zmin || z < s_zmin) s_zmin = z;
+        if (z > s_zmax) s_zmax = z;
+    }
+    closedir(d);
+}
+
+static void scan_coverage(int z)
+{
+    if (s_cov.z == z) return;
+    s_cov = Coverage();
+    s_cov.z = z;
+    char path[96];
+    snprintf(path, sizeof(path), "/sd%s/%d", s_tile_root, z);
+    DIR *d = opendir(path);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!isdigit((unsigned char)e->d_name[0])) continue;
+        int x = atoi(e->d_name);
+        char xpath[128];
+        snprintf(xpath, sizeof(xpath), "%s/%s", path, e->d_name);
+        DIR *xd = opendir(xpath);
+        if (!xd) continue;
+        struct dirent *f;
+        while ((f = readdir(xd))) {
+            if (!isdigit((unsigned char)f->d_name[0])) continue;
+            int y = atoi(f->d_name);
+            if (!s_cov.ok) { s_cov.ok = true; s_cov.x0 = s_cov.x1 = x; s_cov.y0 = s_cov.y1 = y; }
+            if (x < s_cov.x0) s_cov.x0 = x;
+            if (x > s_cov.x1) s_cov.x1 = x;
+            if (y < s_cov.y0) s_cov.y0 = y;
+            if (y > s_cov.y1) s_cov.y1 = y;
+        }
+        closedir(xd);
+    }
+    closedir(d);
+}
+
 static void render()
 {
     lv_obj_clean(s_view);
@@ -102,6 +160,27 @@ static void render()
                 lv_obj_set_pos(img, (lv_coord_t)(tx * 256 - x0), (lv_coord_t)(ty * 256 - y0));
                 tiles++;
             }
+        }
+    }
+
+    // Outline of the tiled area at this zoom, so the way to it is obvious
+    if (s_tile_root[0]) {
+        scan_coverage(s_zoom);
+        if (s_cov.ok) {
+            double bx = s_cov.x0 * 256.0 - x0, by = s_cov.y0 * 256.0 - y0;
+            double bw = (s_cov.x1 - s_cov.x0 + 1) * 256.0, bh = (s_cov.y1 - s_cov.y0 + 1) * 256.0;
+            // Clamp to a sane size so a huge set does not overflow lv_coord_t
+            if (bx < -4000) { bw += bx + 4000; bx = -4000; }
+            if (by < -4000) { bh += by + 4000; by = -4000; }
+            if (bw > 8000) bw = 8000;
+            if (bh > 8000) bh = 8000;
+            lv_obj_t *box = lv_obj_create(s_view);
+            lv_obj_remove_style_all(box);
+            lv_obj_set_style_border_color(box, T_WARN, 0);
+            lv_obj_set_style_border_width(box, 1, 0);
+            lv_obj_set_style_border_opa(box, LV_OPA_60, 0);
+            lv_obj_set_size(box, (lv_coord_t)bw, (lv_coord_t)bh);
+            lv_obj_set_pos(box, (lv_coord_t)bx, (lv_coord_t)by);
         }
     }
 
@@ -143,8 +222,14 @@ static void render()
 
     char scale[16];
     fmt_distance(step, scale, sizeof(scale));
+    char where[24] = "no SD tiles";
+    if (s_tile_root[0]) {
+        if (tiles) where[0] = 0;
+        else if (s_zmin && (s_zoom < s_zmin || s_zoom > s_zmax)) snprintf(where, sizeof(where), "tiles at z%d-%d", s_zmin, s_zmax);
+        else strcpy(where, "no tiles here");
+    }
     lv_label_set_text_fmt(s_info, "z%d  %.4f,%.4f  grid %s  %u nodes  %s", s_zoom, s_lat, s_lon, scale,
-                          (unsigned)shown, s_tile_root[0] ? (tiles ? "" : "no tiles here") : "no SD tiles");
+                          (unsigned)shown, where);
     s_seen_version = nodedb::version();
 }
 
@@ -185,7 +270,7 @@ static void sync_finish(const char *msg)
     s_syncing = false;
     lv_img_cache_invalidate_src(NULL); // a replaced tile must not keep showing its old decode
     ui_toast(msg);
-    if (ui_current_app() == &app_map) { find_tile_root(); render(); }
+    if (ui_current_app() == &app_map) { find_tile_root(); scan_zooms(); render(); }
 }
 
 static void pulled(bool ok)
@@ -278,6 +363,7 @@ static bool keys(uint32_t k)
 static void open(lv_obj_t *parent)
 {
     find_tile_root();
+    scan_zooms();
     if (!s_have_center) {
         s_have_center = true;
         if (center_on_me()) s_zoom = 12;
