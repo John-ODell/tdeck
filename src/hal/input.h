@@ -15,8 +15,13 @@ void input_set_group(lv_group_t *g);
 typedef bool (*input_key_hook_t)(uint32_t key);
 void input_set_key_hook(input_key_hook_t hook);
 void input_inject_key(uint32_t key);  // as if typed (debug console)
-// While the screen is off, input only counts as activity (the waking key is dropped)
-void input_set_screen_off(bool off);
+// Locked (screen off): keys and trackball rolls are dropped and are not activity, so a
+// pocket press changes nothing. Holding the trackball button about a second unlocks, and
+// holding it two seconds while awake locks; both go through the lock hook.
+void input_set_locked(bool locked);
+bool input_locked();
+typedef void (*input_lock_hook_t)(bool lock);
+void input_set_lock_hook(input_lock_hook_t hook);
 
 // Trackball modes. FOCUS: PREV/NEXT/LEFT/RIGHT steps (default). ARROWS: UP/DOWN/LEFT/RIGHT
 // steps. RAW: no keys; edges accumulate for input_trackball_take() and a click is a held

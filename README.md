@@ -40,13 +40,15 @@ Mesh behaviour matches a Meshtastic `CLIENT`:
 | Trackball left / right | Adjust sliders and dropdowns, move the text cursor, pan the map |
 | Trackball click | Select / Enter |
 | Trackball **long click** | Back |
+| Trackball **held 2 s** | Lock: screen off, keys ignored |
+| Trackball **held 1 s while locked** | Unlock |
 | Keyboard | Type; Enter sends a message |
 | `Alt+B` | Keyboard backlight (handled by the keyboard itself) |
 | Map: `+` `-` `c` `n` | Zoom in / out, centre on me, jump to the next node |
 | Notes: `n` · Files: `d` `d` · WiFi/BLE: `r` | New note · delete · rescan |
 | Touch | Tap anything |
 
-The screen turns off after the timeout (default 1 min). The input that wakes it is swallowed, and an incoming message wakes it too.
+The screen fades out after the timeout (default 10 s) and the T-Deck locks: keys and trackball rolls do nothing, so a pocket press changes nothing. Hold the trackball button about a second to unlock, or two seconds while awake to lock at once. An incoming message or a finished timer lights the screen for a look but keeps the lock.
 
 ## Flash it
 

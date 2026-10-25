@@ -12,8 +12,8 @@ static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
 static const char *TZ_OPTS = "Eastern\nCentral\nMountain\nPacific\nAlaska\nHawaii\nUTC";
-static const uint16_t TIMEOUTS[] = {15, 30, 60, 120, 300, 0};
-static const char *TIMEOUT_OPTS = "15 s\n30 s\n1 min\n2 min\n5 min\nNever";
+static const uint16_t TIMEOUTS[] = {10, 15, 30, 60, 120, 300, 0};
+static const char *TIMEOUT_OPTS = "10 s\n15 s\n30 s\n1 min\n2 min\n5 min\nNever";
 static const uint8_t PRECS[] = {32, 16, 13, 11};
 static const char *PREC_OPTS = "Exact\n~300 m\n~1.4 km\n~6 km";
 
@@ -182,8 +182,8 @@ static void open(lv_obj_t *parent)
     lv_obj_align(s_tone, LV_ALIGN_RIGHT_MID, 0, 0);
     add_focus(s_tone);
 
-    int to_idx = 2;
-    for (int i = 0; i < 6; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
+    int to_idx = 0;
+    for (int i = 0; i < 7; i++) if (TIMEOUTS[i] == settings.screen_timeout_s) to_idx = i;
     s_timeout = dropdown_row(col, "Screen off after", TIMEOUT_OPTS, to_idx);
     int tz_idx = 0;
     for (int i = 0; i < 7; i++) if (TZ_VALUES[i] == settings.tz_offset_min) tz_idx = i;

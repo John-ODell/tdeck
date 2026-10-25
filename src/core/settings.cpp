@@ -24,7 +24,7 @@ static void defaults()
     settings.share_position = false;
     settings.position_precision = 13; // ~1.4 km, Meshtastic's public-channel default
     settings.brightness = 12;
-    settings.screen_timeout_s = 60;
+    settings.screen_timeout_s = 10;
     settings.tz_offset_min = -300;
     settings.trackball = 3;
     settings.chat_tone = true;
