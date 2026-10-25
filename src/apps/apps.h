@@ -13,6 +13,7 @@ extern const App app_notes;
 extern const App app_files;
 extern const App app_settings;
 extern const App app_spectrum;
+extern const App app_keyboard;
 
 // Cross-app navigation
 class NimBLEAdvertisedDevice;

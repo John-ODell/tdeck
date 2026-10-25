@@ -97,6 +97,7 @@ void setup()
     ui_register_app(&app_wifi);
     ui_register_app(&app_ble);
     ui_register_app(&app_spectrum);
+    ui_register_app(&app_keyboard);
     ui_register_app(&app_notes);
     ui_register_app(&app_files);
     ui_register_app(&app_settings);
