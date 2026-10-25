@@ -147,9 +147,6 @@ void ui_register_app(const App *app)
     if (s_app_count < 24) s_apps[s_app_count++] = app;
 }
 
-// The display and the SD card share one SPI bus, and the first frame of an app that reads
-// the card has been seen to reach the panel with a band missing (launcher tiles left over
-
 void ui_open_app(const App *app)
 {
     if (s_current && s_current->close) s_current->close();
@@ -231,9 +228,28 @@ void ui_toast(const char *text)
     lv_obj_del_delayed(box, 2500);
 }
 
+// List labels wrap in the proportional font instead of scrolling: the theme's mono font is
+// twice as wide and would set most rows rolling
+static void settle_label(lv_obj_t *label)
+{
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+}
+
 lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text)
 {
     lv_obj_t *btn = lv_list_add_btn(list, symbol, text);
+    for (uint32_t i = 0; i < lv_obj_get_child_cnt(btn); i++) {
+        lv_obj_t *c = lv_obj_get_child(btn, i);
+        if (lv_obj_check_type(c, &lv_label_class)) settle_label(c);
+    }
     lv_group_add_obj(ui_group(), btn);
     return btn;
+}
+
+lv_obj_t *ui_list_text(lv_obj_t *list, const char *text)
+{
+    lv_obj_t *l = lv_list_add_text(list, text);
+    settle_label(l);
+    return l;
 }

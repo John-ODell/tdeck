@@ -81,7 +81,7 @@ static void show_results()
         }
     }
     lv_label_set_text_fmt(s_title, "%d devices   %d trackers   %d Meshtastic   (r = rescan)", n, trackers, mesh);
-    if (n == 0) lv_list_add_text(s_list, "Nothing found. Press r to rescan.");
+    if (n == 0) ui_list_text(s_list, "Nothing found. Press r to rescan.");
 }
 
 static bool keys(uint32_t k)
