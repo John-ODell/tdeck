@@ -274,6 +274,9 @@ static void build_live(lv_obj_t *parent)
     lv_obj_set_style_border_width(s_term_box, 1, 0);
     lv_obj_set_style_radius(s_term_box, 2, 0);
     lv_obj_set_style_pad_all(s_term_box, 4, 0);
+    // A tap on the screen leaves typing: in mouse mode the trackball hold is the drag (#48)
+    for (lv_obj_t *o : {s_live, s_term_box})
+        lv_obj_add_event_cb(o, [](lv_event_t *) { if (s_in_live) leave_live(); }, LV_EVENT_CLICKED, nullptr);
     s_term = lv_label_create(s_term_box);
     lv_label_set_long_mode(s_term, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_term, LV_PCT(100));
@@ -368,9 +371,10 @@ static void update_status()
     }
     lv_label_set_text(lv_obj_get_child(s_forget_btn, 0),
                       s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH " Forget hosts" : LV_SYMBOL_TRASH " Forget dongle");
-    lv_label_set_text_fmt(s_live_status, "%s %s   hold trackball to stop",
+    lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
-                          out_ready() ? "sending" : "not connected");
+                          out_ready() ? "sending" : "not connected",
+                          s_ball == B_MOUSE ? "tap screen to stop" : "tap screen or hold trackball to stop");
     lv_obj_set_style_text_color(s_live_status, out_ready() ? T_TEXT : T_WARN, 0);
 }
 

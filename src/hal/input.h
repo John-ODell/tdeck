@@ -25,7 +25,8 @@ void input_set_lock_hook(input_lock_hook_t hook);
 
 // Trackball modes. FOCUS: PREV/NEXT/LEFT/RIGHT steps (default). ARROWS: UP/DOWN/LEFT/RIGHT
 // steps. RAW: no keys; edges accumulate for input_trackball_take() and a click is a held
-// button (input_trackball_pressed) instead of ENTER. A long click is ESC in every mode.
+// button (input_trackball_pressed) instead of ENTER, held as long as the finger stays, so
+// only a 5 s hold is ESC there. In the other modes a 600 ms hold is ESC.
 enum TrackballMode { TB_FOCUS, TB_ARROWS, TB_RAW };
 void input_set_trackball_mode(TrackballMode m);
 void input_trackball_take(int *dx, int *dy);

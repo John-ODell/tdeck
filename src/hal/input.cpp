@@ -211,6 +211,11 @@ void input_poll()
             lock_sent = long_sent = true;   // the release after an unlock is not a click
             if (s_lock_hook) s_lock_hook(false);
         }
+    } else if (s_tb_mode == TB_RAW) {
+        // Mouse mode: the hold is the drag (#48). Only a 5 s hold does anything else: it
+        // leaves typing, for when the screen can't be tapped.
+        if (down && !long_sent && millis() - down_at > 5000) { long_sent = true; push_key(LV_KEY_ESC); }
+        if (down != was_down) s_last_activity = millis();
     } else {
         if (down && !long_sent && millis() - down_at > 600) { long_sent = true; push_key(LV_KEY_ESC); }
         if (down && !lock_sent && millis() - down_at > 2000) { lock_sent = true; if (s_lock_hook) s_lock_hook(true); }
