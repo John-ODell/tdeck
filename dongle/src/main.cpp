@@ -5,6 +5,7 @@
 // packet checks out, so a pairing that half-failed leaves the old one in place.
 //
 // LED: fast blink = pairing, slow blink = paired but the T-Deck is away, on = connected.
+// Boards with a screen (GEEK) show the same plus the last keys typed.
 #include <Arduino.h>
 #include <USB.h>
 #include <USBHIDKeyboard.h>
@@ -16,6 +17,9 @@
 #include <mbedtls/ecp.h>
 #include <Preferences.h>
 #include "link_proto.h"
+#ifdef GEEK_LCD
+#include <TFT_eSPI.h>
+#endif
 
 static USBHIDKeyboard Keyboard;
 static USBHIDMouse Mouse;
@@ -36,6 +40,8 @@ static int s_paired_sends = 0;
 
 static uint32_t s_last_rx = 0, s_last_hello = 0;
 static uint8_t s_buttons = 0;
+static uint32_t s_taps = 0;
+static char s_last[24] = "";
 
 // ESP-NOW callbacks run in the WiFi task; USB work happens in loop()
 struct Rx { uint8_t mac[6]; uint8_t len; uint8_t data[48]; };
@@ -94,6 +100,91 @@ static void led(bool on)
 #elif defined(LED_PIN)
     digitalWrite(LED_PIN, on);
 #endif
+}
+
+#ifdef GEEK_LCD
+static TFT_eSPI tft;
+enum ScreenState { SCR_PAIRING, SCR_AWAY, SCR_ONLINE };
+static int s_scr_state = -1;
+static uint32_t s_scr_taps = (uint32_t)-1;
+
+static void screen_init()
+{
+    tft.init();
+    tft.setRotation(1); // USB plug on the left, 240 wide
+    tft.fillScreen(TFT_BLACK);
+}
+
+// Dark background, phosphor green text, like the T-Deck
+static void screen_draw(ScreenState st)
+{
+    const uint16_t green = tft.color565(0x00, 0xff, 0x41), dim = tft.color565(0x1c, 0x8c, 0x3c);
+    const uint16_t amber = tft.color565(0xff, 0xb0, 0x30);
+    if (st != s_scr_state) {
+        s_scr_state = st;
+        s_scr_taps = (uint32_t)-1;
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextColor(dim, TFT_BLACK);
+        tft.drawString("T-DECK DONGLE", 6, 4, 2);
+        tft.setTextColor(st == SCR_ONLINE ? green : amber, TFT_BLACK);
+        switch (st) {
+        case SCR_PAIRING:
+            tft.drawString("Pairing", 6, 28, 4);
+            tft.setTextColor(dim, TFT_BLACK);
+            tft.drawString("On the T-Deck: Keyboard >", 6, 62, 2);
+            tft.drawString("Pair a dongle", 6, 80, 2);
+            break;
+        case SCR_AWAY:
+            tft.drawString("T-Deck away", 6, 28, 4);
+            tft.setTextColor(dim, TFT_BLACK);
+            tft.drawString("Hold BOOT 2 s to pair again", 6, 62, 2);
+            break;
+        case SCR_ONLINE:
+            tft.drawString("Connected", 6, 28, 4);
+            break;
+        }
+        if (s_paired) {
+            char mac[32];
+            snprintf(mac, sizeof(mac), "T-Deck %02x:%02x:%02x", s_mac[3], s_mac[4], s_mac[5]);
+            tft.setTextColor(dim, TFT_BLACK);
+            tft.drawString(mac, 6, 116, 2);
+        }
+    }
+    if (st == SCR_ONLINE && s_taps != s_scr_taps) {
+        s_scr_taps = s_taps;
+        char line[48];
+        snprintf(line, sizeof(line), "%lu keys  %s", (unsigned long)s_taps, s_last);
+        tft.setTextColor(green, TFT_BLACK);
+        tft.setTextPadding(228);
+        tft.drawString(line, 6, 80, 2);
+        tft.setTextPadding(0);
+    }
+}
+#endif
+
+// Printable form of a tap for the screen
+static void note_tap(uint8_t mod, uint8_t usage)
+{
+    s_taps++;
+    const char *name = nullptr;
+    char c = 0;
+    if (usage >= 0x04 && usage <= 0x1D) c = (mod & 0x02 ? 'A' : 'a') + usage - 0x04;
+    else if (usage >= 0x1E && usage <= 0x26) c = '1' + usage - 0x1E;
+    else if (usage == 0x27) c = '0';
+    else if (usage == 0x2C) name = "space";
+    else if (usage == 0x28) name = "enter";
+    else if (usage == 0x2A) name = "bksp";
+    else if (usage == 0x2B) name = "tab";
+    else if (usage == 0x29) name = "esc";
+    else if (usage >= 0x4F && usage <= 0x52) name = "arrow";
+    size_t n = strlen(s_last);
+    if (name) {
+        snprintf(s_last, sizeof(s_last), "%s", name);
+    } else if (c) {
+        if (n >= 12) { memmove(s_last, s_last + 1, n); n--; }
+        s_last[n] = c;
+        s_last[n + 1] = 0;
+    }
 }
 
 static void add_peer(const uint8_t mac[6], const uint8_t *lmk)
@@ -222,6 +313,7 @@ static void handle(const Rx &r)
         Keyboard.sendReport(&k);
         memset(&k, 0, sizeof(k));
         Keyboard.sendReport(&k);
+        note_tap(t->mod, t->usage);
         break;
     }
     case LINK_MOUSE: {
@@ -249,6 +341,9 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
 #endif
     led(false);
+#ifdef GEEK_LCD
+    screen_init();
+#endif
 
     s_rxq = xQueueCreate(32, sizeof(Rx));
     WiFi.mode(WIFI_STA);
@@ -324,5 +419,8 @@ void loop()
     if (s_pairing) led((now / 100) & 1);
     else if (online) led(true);
     else led((now / 1000) & 1);
+#ifdef GEEK_LCD
+    screen_draw(s_pairing ? SCR_PAIRING : online ? SCR_ONLINE : SCR_AWAY);
+#endif
     delay(2);
 }
