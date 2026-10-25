@@ -183,6 +183,7 @@ static void sync_step();
 static void sync_finish(const char *msg)
 {
     s_syncing = false;
+    lv_img_cache_invalidate_src(NULL); // a replaced tile must not keep showing its old decode
     ui_toast(msg);
     if (ui_current_app() == &app_map) { find_tile_root(); render(); }
 }
