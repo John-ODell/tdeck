@@ -39,15 +39,6 @@ static void forward(const Message &m)
     dongle::send_blob(BLOB_TEXT_EVENT, &e, n);
 }
 
-static void on_blob(uint8_t kind, const uint8_t *data, size_t len)
-{
-    if (kind != BLOB_SEND_TEXT || len <= sizeof(uint32_t)) return;
-    LinkSendText t = {};
-    memcpy(&t, data, len > sizeof(t) ? sizeof(t) : len);
-    t.text[sizeof(t.text) - 1] = 0;
-    if (!mesh::send_text(t.to, t.text)) Serial.println("[companion] mesh send failed");
-}
-
 static void relay_tick()
 {
     size_t n = messages::count();
@@ -84,7 +75,6 @@ static File s_fh;
 static uint8_t s_wait_id = 0;
 static int s_retries = 0;
 static uint32_t s_sent_at = 0;
-static char s_status[48] = "";
 static uint8_t s_chunk[LINK_BLOB_MAX * LINK_BLOB_PARTS];
 static size_t s_chunk_len = 0;
 static uint8_t s_chunk_kind = 0;

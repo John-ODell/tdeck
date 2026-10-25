@@ -95,7 +95,7 @@ static void tick()
     if (n < 0) {
         lv_obj_clean(s_list);
         lv_label_set_text(s_title, "Scan failed");
-        lv_list_add_text(s_list, "The WiFi scan didn't finish. Press r to retry.");
+        ui_list_text(s_list, "The WiFi scan didn't finish. Press r to retry.");
         return;
     }
     show_results(n);

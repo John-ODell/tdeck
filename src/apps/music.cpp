@@ -363,14 +363,14 @@ static void show_lists()
     lv_group_remove_all_objs(ui_group());
     lv_obj_t *list = lv_list_create(s_root);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(100));
-    lv_list_add_text(list, "Playlists  (folders in /music)");
+    ui_list_text(list, "Playlists  (folders in /music)");
     for (size_t i = 0; i < s_lists.size(); i++) {
         char line[80];
         snprintf(line, sizeof(line), "%s   %d", s_lists[i].name.c_str(), (int)s_lists[i].files.size());
         lv_obj_t *b = ui_list_btn(list, (int)i == s_list ? LV_SYMBOL_PLAY : LV_SYMBOL_AUDIO, line);
         lv_obj_add_event_cb(b, list_clicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
-    if (s_lists.empty()) lv_list_add_text(list, sd_ok() ? "(none yet)" : "(no SD card)");
+    if (s_lists.empty()) ui_list_text(list, sd_ok() ? "(none yet)" : "(no SD card)");
 }
 
 static void show_tracks(int list)
@@ -381,7 +381,7 @@ static void show_tracks(int list)
     lv_group_remove_all_objs(ui_group());
     lv_obj_t *l = lv_list_create(s_root);
     lv_obj_set_size(l, LV_PCT(100), LV_PCT(100));
-    lv_list_add_text(l, s_lists[list].name.c_str());
+    ui_list_text(l, s_lists[list].name.c_str());
     for (size_t i = 0; i < s_lists[list].files.size(); i++) {
         bool cur = list == s_list && (int)i == s_index;
         lv_obj_t *b = ui_list_btn(l, cur ? LV_SYMBOL_PLAY : LV_SYMBOL_AUDIO, pretty(s_lists[list].files[i]).c_str());

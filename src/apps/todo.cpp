@@ -103,7 +103,6 @@ static bool push()
 {
     if (!dongle::online()) return false;
     if (!companion::fs_put(LOCAL, REMOTE, push_done)) return false;
-    set_hdr("pushing");
     return true;
 }
 
@@ -142,7 +141,6 @@ static void sync_card()
     if (!dongle::online()) { ui_toast("Dongle is offline"); return; }
     if (companion::busy()) { ui_toast("Dongle is busy"); return; }
     if (!companion::fs_get(REMOTE, PULLED, pull_done)) { ui_toast("Dongle is busy"); return; }
-    set_hdr("syncing");
 }
 
 // ---- the screen ---------------------------------------------------------------------
@@ -191,7 +189,6 @@ static void show_list()
 static void add_item()
 {
     s_adding = true;
-    s_hdr = nullptr;
     lv_obj_clean(s_root);
     lv_group_remove_all_objs(ui_group());
     lv_obj_t *title = lv_label_create(s_root);
@@ -262,7 +259,6 @@ static bool on_back()
 static void close()
 {
     s_open = false;
-    s_hdr = nullptr;
     s_ta = nullptr;
     s_adding = false;
     if (s_push_timer) { lv_timer_del(s_push_timer); s_push_timer = nullptr; }

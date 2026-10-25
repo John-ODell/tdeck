@@ -102,9 +102,9 @@ void setup()
     ui_register_app(&app_spectrum);
     ui_register_app(&app_keyboard);
     ui_register_app(&app_notes);
+    ui_register_app(&app_todo);
     ui_register_app(&app_timer);
     ui_register_app(&app_music);
-    ui_register_app(&app_todo);
     ui_register_app(&app_files);
     ui_register_app(&app_settings);
     ui_register_app(&app_about);
@@ -117,8 +117,8 @@ void setup()
     mesh::set_text_callback(on_text);
     sd_mount();
     gps_init();
-    trip_init();
     companion::init();
+    trip_init();
 }
 
 void loop()
