@@ -19,6 +19,7 @@
 #include <esp_random.h>
 #include <mbedtls/ecp.h>
 #include <Preferences.h>
+#include <FS.h>
 #include "link_proto.h"
 #ifdef GEEK_LCD
 #include <TFT_eSPI.h>
@@ -692,6 +693,31 @@ static void on_recv(const uint8_t *mac, const uint8_t *data, int len)
     xQueueSend(s_rxq, &r, 0);
 }
 
+// Replay check (#47): PING, TAP and MOUSE carry a counter; anything not newer than the
+// last accepted one is dropped. The floor is kept in NVS in batches so a reboot cannot
+// reopen the window further back than CTR_BATCH packets.
+static uint32_t s_ctr_last = 0, s_ctr_saved = 0;
+static const uint32_t CTR_BATCH = 256;
+
+static void save_ctr()
+{
+    Preferences p;
+    p.begin("link", false);
+    p.putUInt("ctr", s_ctr_saved);
+    p.end();
+}
+
+static bool ctr_fresh(uint32_t c)
+{
+    if (c <= s_ctr_last) {
+        Serial.printf("[dongle] replayed packet dropped: counter %lu, last %lu\n", (unsigned long)c, (unsigned long)s_ctr_last);
+        return false;
+    }
+    s_ctr_last = c;
+    if (c >= s_ctr_saved) { s_ctr_saved = c + CTR_BATCH; save_ctr(); }
+    return true;
+}
+
 static void save()
 {
     Preferences p;
@@ -724,6 +750,7 @@ static void send_ctl(const uint8_t mac[6], const uint8_t lmk[16], uint8_t type)
 {
     LinkCtl c;
     link_hdr(&c.h, type);
+    c.ctr = 0;
     link_tag(lmk, &c, offsetof(LinkCtl, tag), c.tag);
     esp_err_t e = esp_now_send(mac, (const uint8_t *)&c, sizeof(c));
     if (e != ESP_OK) Serial.printf("[dongle] esp_now_send %d: %s\n", type, esp_err_to_name(e));
@@ -754,7 +781,10 @@ static void commit_trial()
     memcpy(s_mac, s_trial_mac, 6);
     memcpy(s_lmk, s_trial_lmk, 16);
     s_paired = true;
+    s_ctr_last = 0; // a fresh pairing starts the T-Deck's counter over, as far as we know
+    s_ctr_saved = 0;
     save();
+    save_ctr();
     s_pairing = false;
     s_trial = false;
     memset(s_priv, 0, sizeof(s_priv));
@@ -763,6 +793,16 @@ static void commit_trial()
 
 static void handle(const Rx &r)
 {
+    uint8_t v = link_version_of(r.data, r.len);
+    if (v && v != LINK_VERSION) {
+        // An old T-Deck would otherwise just type nothing
+        static uint32_t said = 0;
+        if (!said || millis() - said > 10000) {
+            said = millis() ? millis() : 1;
+            Serial.printf("[dongle] the T-Deck speaks link v%u, this dongle v%u: flash both from the same tree\n", v, LINK_VERSION);
+        }
+        return;
+    }
     if (link_hdr_ok(r.data, r.len, LINK_PAIR, sizeof(LinkKeyMsg))) { handle_pair(r); return; }
 
     // Everything else must come from the peer and carry its tag
@@ -788,10 +828,12 @@ static void handle(const Rx &r)
 
     switch (((const LinkHdr *)d)->type) {
     case LINK_PING:
+        if (!ctr_fresh(((const LinkCtl *)d)->ctr)) break;
         send_ctl(s_mac, s_lmk, LINK_PONG);
         break;
     case LINK_TAP: {
         const LinkTap *t = (const LinkTap *)d;
+        if (!ctr_fresh(t->ctr)) break;
         KeyReport k = {};
         k.modifiers = t->mod;
         k.keys[0] = t->usage;
@@ -803,6 +845,7 @@ static void handle(const Rx &r)
     }
     case LINK_MOUSE: {
         const LinkMouse *m = (const LinkMouse *)d;
+        if (!ctr_fresh(m->ctr)) break;
         uint8_t down = m->buttons & ~s_buttons, up = s_buttons & ~m->buttons;
         if (m->dx || m->dy || m->wheel) Mouse.move(m->dx, m->dy, m->wheel);
         if (down) Mouse.press(down);
@@ -866,7 +909,9 @@ void setup()
     Preferences p;
     p.begin("link", true);
     s_paired = p.isKey("mac") && p.getBytes("mac", s_mac, 6) == 6 && p.getBytes("lmk", s_lmk, 16) == 16;
+    s_ctr_last = p.getUInt("ctr", 0);
     p.end();
+    s_ctr_saved = s_ctr_last; // the next accepted packet writes a new batch
     if (s_paired) {
         add_peer(s_mac, s_lmk);
         Serial.printf("[dongle] paired with %02x:%02x:%02x:%02x:%02x:%02x\n", s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5]);

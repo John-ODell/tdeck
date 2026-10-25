@@ -13,6 +13,7 @@ bool running();
 bool paired();
 void peer_mac(uint8_t mac[6]);
 bool online();              // dongle answered a ping in the last 3 s
+bool old_firmware();        // the paired dongle spoke another link version in the last 10 s: reflash it
 void forget();
 
 // Pairing: collect HELLOs from unpaired dongles, then pick one

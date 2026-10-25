@@ -13,6 +13,26 @@ static bool s_running = false, s_paired = false, s_listen = false;
 static uint8_t s_mac[6], s_lmk[16];
 static volatile uint32_t s_last_pong = 0;
 static uint32_t s_last_ping = 0;
+static volatile uint32_t s_old_peer_at = 0; // the paired dongle last spoke another link version
+
+// The packet counter the dongle checks for replays. It is written to NVS in batches of
+// CTR_BATCH, and a boot starts past the last batch, so it never repeats across resets.
+static uint32_t s_ctr = 0, s_ctr_saved = 0;
+static const uint32_t CTR_BATCH = 256;
+
+static void save_ctr()
+{
+    Preferences p;
+    p.begin("link", false);
+    p.putUInt("ctr", s_ctr_saved);
+    p.end();
+}
+
+static uint32_t next_ctr()
+{
+    if (++s_ctr >= s_ctr_saved) { s_ctr_saved = s_ctr + CTR_BATCH; save_ctr(); }
+    return s_ctr;
+}
 
 // HELLOs seen while listening, with their public keys
 struct Candidate { uint8_t mac[6]; uint8_t pub[32]; uint32_t seen; };
@@ -55,6 +75,11 @@ static void add_peer(const uint8_t mac[6], const uint8_t *lmk)
 static void on_recv(const uint8_t *mac, const uint8_t *data, int len)
 {
     uint32_t now = millis();
+    uint8_t v = link_version_of(data, len);
+    if (v && v != LINK_VERSION) {
+        if (s_paired && !memcmp(mac, s_mac, 6)) s_old_peer_at = now ? now : 1;
+        return;
+    }
     if (link_hdr_ok(data, len, LINK_HELLO, sizeof(LinkKeyMsg))) {
         if (!s_listen) return;
         const LinkKeyMsg *m = (const LinkKeyMsg *)data;
@@ -100,7 +125,10 @@ static void load()
     Preferences p;
     p.begin("link", false); // read-write: creates the namespace on first run instead of logging an error
     s_paired = p.isKey("mac") && p.getBytes("mac", s_mac, 6) == 6 && p.getBytes("lmk", s_lmk, 16) == 16;
+    s_ctr = p.getUInt("ctr", 0);
     p.end();
+    s_ctr_saved = s_ctr + CTR_BATCH;
+    save_ctr();
 }
 
 static void save()
@@ -155,6 +183,7 @@ void forget()
     p.begin("link", false);
     p.clear();
     p.end();
+    save_ctr(); // the counter outlives the pairing: a new dongle must never see an old value
 }
 
 void pair_listen(bool on)
@@ -250,6 +279,7 @@ void tick()
         s_last_ping = millis();
         LinkCtl c;
         link_hdr(&c.h, LINK_PING);
+        c.ctr = next_ctr();
         link_tag(s_lmk, &c, offsetof(LinkCtl, tag), c.tag);
         esp_now_send(s_mac, (const uint8_t *)&c, sizeof(c));
     }
@@ -262,6 +292,7 @@ bool tap(uint8_t mod, uint8_t usage)
     link_hdr(&t.h, LINK_TAP);
     t.mod = mod;
     t.usage = usage;
+    t.ctr = next_ctr();
     link_tag(s_lmk, &t, offsetof(LinkTap, tag), t.tag);
     return esp_now_send(s_mac, (const uint8_t *)&t, sizeof(t)) == ESP_OK;
 }
@@ -275,11 +306,14 @@ bool mouse(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel)
     m.dx = dx;
     m.dy = dy;
     m.wheel = wheel;
+    m.ctr = next_ctr();
     link_tag(s_lmk, &m, offsetof(LinkMouse, tag), m.tag);
     return esp_now_send(s_mac, (const uint8_t *)&m, sizeof(m)) == ESP_OK;
 }
 
 void set_blob_cb(blob_cb_t cb) { s_blob_cb = cb; }
+
+bool old_firmware() { return s_old_peer_at && millis() - s_old_peer_at < 10000; }
 
 bool send_blob(uint8_t kind, const void *data, size_t len, uint8_t *id_out)
 {
