@@ -21,10 +21,12 @@ lv_group_t *ui_group();           // group for the open app: add focusable widge
 void ui_toast(const char *text);  // short notice over everything
 void ui_set_status_extra(const char *text); // e.g. unread count
 void ui_status_refresh();
+void screen_wake();                 // turn the backlight on as if a key were pressed
 
 // Per-app raw key hook (reset whenever an app opens). Return true to swallow.
 typedef bool (*ui_key_hook_t)(uint32_t key);
 void ui_set_app_key_hook(ui_key_hook_t hook);
 
 // Shared styling helpers
-lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text);
+lv_obj_t *ui_list_btn(lv_obj_t *list, const char *symbol, const char *text); // row: wraps, never scrolls
+lv_obj_t *ui_list_text(lv_obj_t *list, const char *text);                    // header, same font
