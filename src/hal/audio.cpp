@@ -70,6 +70,13 @@ void audio_tone(uint16_t freq_hz, uint16_t ms)
     s_qt = next;
 }
 
+static float s_tone_amp = 6000.0f;
+void audio_tone_level(uint8_t level)
+{
+    static const float AMP[] = {1500.0f, 6000.0f, 14000.0f};
+    s_tone_amp = AMP[level > 2 ? 1 : level];
+}
+
 void audio_tick()
 {
     if (s_qh == s_qt) return;
@@ -86,7 +93,7 @@ void audio_tick()
         uint32_t frames = total - s_pos < 128 ? total - s_pos : 128;
         for (uint32_t i = 0; i < frames; i++) {
             uint32_t n = s_pos + i;
-            float a = t.hz ? 6000.0f : 0.0f;
+            float a = t.hz ? s_tone_amp : 0.0f;
             if (n < fade) a *= (float)n / fade;
             else if (total - n < fade) a *= (float)(total - n) / fade;
             int16_t v = (int16_t)(a * sinf(2.0f * (float)M_PI * t.hz * n / rate));

@@ -27,7 +27,7 @@ More screens in [`docs/screenshots/`](docs/screenshots/); the longer write-up is
 | **Files** | SD browser with sizes and free space. Views text files; deletes after pressing `d` twice; `p` pushes a file to the dongle's card. With a dongle paired, a **Dongle card** row opens the GEEK's TF card over the link: browse it, click a text file to read it, `g` pulls any file to `/dongle/` on the T-Deck. |
 | **Timer** | Stopwatch with laps and a countdown. Left/right switch; click starts and pauses; `l` lap, `r` reset; up/down set the countdown. Both keep running with the app closed, and the countdown rings the speaker and wakes the screen from any app. |
 | **Music** | MP3 and WAV from `/music` on the SD card through the speaker. Every folder in `/music` is a playlist, loose files are the `Music` playlist (the Pi's layout). Click = play/pause, left/right = track, up/down = volume, `p` = playlists, `x` = stop. Keeps playing with the app closed. `s` pulls everything new under `music/` on the GEEK's card. |
-| **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, radio stats, power off. |
+| **Settings** | Names, modem preset, channel name, TX power, hop limit, relaying, shared-position precision, brightness, screen timeout, US time zone, message tone and tone volume, radio stats, power off. |
 | **About** | Version, MAC, battery, memory, detected peripherals. |
 
 Mesh behaviour matches a Meshtastic `CLIENT`:

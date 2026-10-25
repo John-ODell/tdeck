@@ -28,6 +28,7 @@ static void defaults()
     settings.tz_offset_min = -300;
     settings.trackball = 3;
     settings.chat_tone = true;
+    settings.tone_volume = 1;
 }
 
 void settings_load()
@@ -40,6 +41,7 @@ void settings_load()
         p.getBytes("s", &settings, len);
     }
     if (settings.trackball < 1 || settings.trackball > 5) settings.trackball = 3;
+    if (settings.tone_volume > 2) settings.tone_volume = 1;
     p.end();
     if (!settings.has_keys) {
         settings.has_keys = crypto::x25519_generate(settings.priv_key, settings.pub_key);
