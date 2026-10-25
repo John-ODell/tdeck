@@ -20,6 +20,8 @@ struct Settings {
     uint8_t priv_key[32];
     uint8_t pub_key[32];
     bool has_keys;
+    // Appended fields: older stored blobs load as a prefix and keep defaults for these
+    uint8_t trackball;       // 1 (slow) .. 5 (fast)
 };
 
 extern Settings settings;
