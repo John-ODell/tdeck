@@ -177,8 +177,8 @@ static void render()
             lv_obj_t *box = lv_obj_create(s_view);
             lv_obj_remove_style_all(box);
             lv_obj_set_style_border_color(box, T_WARN, 0);
-            lv_obj_set_style_border_width(box, 1, 0);
-            lv_obj_set_style_border_opa(box, LV_OPA_60, 0);
+            lv_obj_set_style_border_width(box, 2, 0); // 1 px at 60 % vanished against the tiles
+            lv_obj_set_style_border_opa(box, LV_OPA_80, 0);
             lv_obj_set_size(box, (lv_coord_t)bw, (lv_coord_t)bh);
             lv_obj_set_pos(box, (lv_coord_t)bx, (lv_coord_t)by);
         }
@@ -248,7 +248,7 @@ static void render()
         else if (s_zmin && (s_zoom < s_zmin || s_zoom > s_zmax)) snprintf(where, sizeof(where), "tiles at z%d-%d", s_zmin, s_zmax);
         else strcpy(where, "no tiles here");
     }
-    lv_label_set_text_fmt(s_info, "z%d  %.4f,%.4f  grid %s  %u nodes  %s", s_zoom, s_lat, s_lon, scale,
+    lv_label_set_text_fmt(s_info, "z%d  %.4f,%.4f  %s  %u nodes  %s", s_zoom, s_lat, s_lon, scale,
                           (unsigned)shown, where);
     s_seen_version = nodedb::version();
 }
