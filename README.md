@@ -6,6 +6,11 @@ A custom firmware for the **LilyGO T-Deck Plus** (ESP32-S3, SX1262, 915 MHz, int
 
 ## Apps
 
+![Launcher](docs/screenshots/tdeck-launcher.png) ![Chat](docs/screenshots/tdeck-chat.png) ![GEEK dongle](docs/screenshots/geek-connected.png)
+
+More screens in [`docs/screenshots/`](docs/screenshots/); the longer write-up is [`docs/tdeck.md`](docs/tdeck.md).
+
+
 | App | What it does |
 |---|---|
 | **Chat** | `#LongFast` channel plus direct messages. Delivery status (… queued, ✓ sent, ✓✓ relayed/acked, ✕ failed). DMs are PKI-encrypted (X25519 + AES-256-CCM), which Meshtastic 2.7+ requires. A DM to a node whose key isn't known yet waits until its NodeInfo arrives. |
