@@ -57,7 +57,8 @@ static void show_results(int n)
         int i = idx[k];
         char line[96];
         String ssid = WiFi.SSID(i);
-        snprintf(line, sizeof(line), "%s\n%d dBm  ch %d  %s  %s", ssid.length() ? ssid.c_str() : "(hidden)",
+        // The BSSID gets its own line: after the signal and auth it wrapped in the middle (#79)
+        snprintf(line, sizeof(line), "%s\n%d dBm  ch %d  %s\n%s", ssid.length() ? ssid.c_str() : "(hidden)",
                  (int)WiFi.RSSI(i), (int)WiFi.channel(i), auth_name(WiFi.encryptionType(i)), WiFi.BSSIDstr(i).c_str());
         int r = WiFi.RSSI(i);
         lv_obj_t *b = ui_list_btn(s_list, r > -60 ? LV_SYMBOL_WIFI : r > -75 ? LV_SYMBOL_WIFI : LV_SYMBOL_WARNING, line);
