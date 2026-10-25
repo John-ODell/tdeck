@@ -54,6 +54,20 @@ static uint32_t s_taps = 0;
 static char s_last[24] = "";
 static LinkReasm s_reasm;
 static uint8_t s_blob_id = 0;
+static volatile int16_t s_ack_id = -1;
+static volatile bool s_ack_ok = false;
+
+// Serving the card to the T-Deck: one job at a time, one blob in flight, each ACKed
+enum Job { JOB_NONE, JOB_LIST, JOB_GET };
+static Job s_job = JOB_NONE;
+static File s_job_dir, s_job_file;
+static uint8_t s_job_buf[LINK_BLOB_MAX * LINK_BLOB_PARTS];
+static size_t s_job_len = 0;
+static uint8_t s_job_kind = 0, s_job_wait = 0;
+static bool s_job_waiting = false, s_job_last = false;
+static uint32_t s_job_sent_at = 0;
+static int s_job_retries = 0;
+static struct { bool has, dir; uint32_t size; uint8_t nlen; char name[48]; } s_carry;
 static char s_last_msg[64] = "";
 static uint32_t s_msg_ver = 0;
 static char s_line[300];
@@ -279,10 +293,11 @@ static void send_ack(uint8_t id, bool ok)
     esp_now_send(s_mac, (const uint8_t *)&a, sizeof(a));
 }
 
-static bool send_blob(uint8_t kind, const void *data, size_t len)
+static bool send_blob(uint8_t kind, const void *data, size_t len, uint8_t *id_out = nullptr)
 {
     if (!s_paired || len == 0 || len > LINK_BLOB_MAX * LINK_BLOB_PARTS) return false;
     uint8_t id = ++s_blob_id;
+    if (id_out) *id_out = id;
     uint8_t parts = (len + LINK_BLOB_MAX - 1) / LINK_BLOB_MAX;
     for (uint8_t p = 0; p < parts; p++) {
         LinkBlob b;
@@ -310,6 +325,7 @@ static File s_sd_file;
 static uint32_t s_sd_busy_at = 0;
 static char s_sd_path[96];
 static uint32_t s_sd_mtime = 0;
+static volatile bool s_host_wrote = false; // the computer wrote since we last looked
 
 struct SDAccess : public fs::SDMMCFS {
     sdmmc_card_t *card() { return _card; }
@@ -327,6 +343,7 @@ static int32_t msc_write(uint32_t lba, uint32_t off, uint8_t *buf, uint32_t n)
 {
     sdmmc_card_t *c = sd_card();
     if (!c || off || !s_presented) return -1;
+    s_host_wrote = true;
     return sdmmc_write_sectors(c, buf, lba, n / 512) == ESP_OK ? (int32_t)n : -1;
 }
 
@@ -383,19 +400,172 @@ static void sd_give()
     tud_connect();
 }
 
+// Reads happen while the computer has the drive too; both only read the card then. The
+// card is remounted first if the computer wrote to it, so the listing isn't stale.
+static bool sd_reading()
+{
+    if (!s_sd) return false;
+    if (s_presented && s_host_wrote) {
+        s_host_wrote = false;
+        s_msc.mediaPresent(false);
+        delay(20);
+        SD_MMC.end();
+        bool ok = sd_begin();
+        s_msc.mediaPresent(true);
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// "a/b/c.txt" relative to the card root -> "/a/b/c.txt", no "..", folders created if asked
+static bool sd_path(const char *rel, char *out, size_t cap, bool make_dirs)
+{
+    if (strstr(rel, "..")) return false;
+    while (*rel == '/') rel++;
+    snprintf(out, cap, "/%s", rel);
+    size_t n = strlen(out);
+    while (n > 1 && out[n - 1] == '/') out[--n] = 0;
+    if (make_dirs)
+        for (size_t i = 1; i < n; i++)
+            if (out[i] == '/') { out[i] = 0; SD_MMC.mkdir(out); out[i] = '/'; }
+    return true;
+}
+
 static bool sd_file_begin(const LinkFileBegin *b)
 {
     if (!sd_take()) return false;
     if (s_sd_file) s_sd_file.close();
-    char name[64], path[96];
-    strlcpy(name, b->name, sizeof(name));
-    for (char *c = name; *c; c++) if (*c == '/' || *c == '\\') *c = '_';
-    snprintf(path, sizeof(path), "/tdeck/notes/%s", name);
+    char path[96];
+    if (!sd_path(b->name, path, sizeof(path), true)) return false;
     snprintf(s_sd_path, sizeof(s_sd_path), "/sd%s", path);
     s_sd_mtime = b->mtime;
     s_sd_file = SD_MMC.open(path, FILE_WRITE);
-    Serial.printf("{\"type\":\"file\",\"name\":\"%s\",\"size\":%lu}\n", name, (unsigned long)b->size);
+    Serial.printf("{\"type\":\"file\",\"name\":\"%s\",\"size\":%lu}\n", path + 1, (unsigned long)b->size);
     return (bool)s_sd_file;
+}
+
+static void job_end()
+{
+    if (s_job_dir) s_job_dir.close();
+    if (s_job_file) s_job_file.close();
+    s_job = JOB_NONE;
+    s_job_waiting = false;
+}
+
+static void job_error(const char *msg)
+{
+    send_blob(BLOB_FS_ERROR, msg, strlen(msg));
+    job_end();
+}
+
+static bool job_send(uint8_t kind, size_t len)
+{
+    s_job_kind = kind;
+    s_job_len = len;
+    s_job_retries = 0;
+    if (!send_blob(kind, s_job_buf, len, &s_job_wait)) { job_end(); return false; }
+    s_job_sent_at = millis();
+    s_job_waiting = true;
+    return true;
+}
+
+static void job_start_list(const char *rel)
+{
+    if (s_job != JOB_NONE) job_end();
+    char path[96];
+    if (!sd_reading() || !sd_path(rel, path, sizeof(path), false)) { job_error("no card"); return; }
+    s_job_dir = SD_MMC.open(path);
+    if (!s_job_dir || !s_job_dir.isDirectory()) { job_error("no such folder"); return; }
+    s_job = JOB_LIST;
+    s_job_last = false;
+    s_carry.has = false;
+}
+
+static void job_start_get(const char *rel)
+{
+    if (s_job != JOB_NONE) job_end();
+    char path[96];
+    if (!sd_reading() || !sd_path(rel, path, sizeof(path), false)) { job_error("no card"); return; }
+    s_job_file = SD_MMC.open(path, FILE_READ);
+    if (!s_job_file || s_job_file.isDirectory()) { job_error("no such file"); return; }
+    s_job = JOB_GET;
+    LinkFileBegin b = {};
+    b.size = s_job_file.size();
+    b.mtime = s_job_file.getLastWrite();
+    strlcpy(b.name, path + 1, sizeof(b.name));
+    memcpy(s_job_buf, &b, sizeof(b));
+    job_send(BLOB_FILE_BEGIN, sizeof(b));
+}
+
+// Next blob of the running job; called when nothing is in flight
+static void job_step()
+{
+    if (s_job == JOB_LIST) {
+        if (s_job_last) { job_end(); return; }
+        LinkFsEntries *h = (LinkFsEntries *)s_job_buf;
+        h->count = 0;
+        h->last = 0;
+        size_t n = sizeof(*h);
+        auto put = [&](uint32_t size, bool dir, const char *name, uint8_t nl) {
+            LinkFsEntry *e = (LinkFsEntry *)(s_job_buf + n);
+            e->size = size;
+            e->dir = dir;
+            e->nlen = nl;
+            memcpy(s_job_buf + n + sizeof(*e), name, nl);
+            n += sizeof(*e) + nl;
+            h->count++;
+        };
+        if (s_carry.has) { put(s_carry.size, s_carry.dir, s_carry.name, s_carry.nlen); s_carry.has = false; }
+        for (;;) {
+            File f = s_job_dir.openNextFile();
+            if (!f) { h->last = 1; break; }
+            const char *name = f.name();
+            const char *slash = strrchr(name, '/');
+            if (slash) name = slash + 1;
+            if (name[0] == '.') { f.close(); continue; } // macOS's ._ shadows and Spotlight index
+            uint8_t nl = strlen(name) > 47 ? 47 : strlen(name);
+            if (n + sizeof(LinkFsEntry) + nl > sizeof(s_job_buf) || h->count == 255) {
+                // Full: this entry opens the next batch (a File can't be stepped back)
+                s_carry.has = true;
+                s_carry.size = f.isDirectory() ? 0 : f.size();
+                s_carry.dir = f.isDirectory();
+                s_carry.nlen = nl;
+                memcpy(s_carry.name, name, nl);
+                f.close();
+                break;
+            }
+            put(f.isDirectory() ? 0 : f.size(), f.isDirectory(), name, nl);
+            f.close();
+        }
+        s_job_last = h->last;
+        job_send(BLOB_FS_ENTRIES, n);
+        return;
+    }
+    if (s_job == JOB_GET) {
+        if (s_job_kind == BLOB_FILE_END) { job_end(); return; }
+        size_t n = s_job_file.read(s_job_buf, sizeof(s_job_buf));
+        if (n == 0) { s_job_buf[0] = 0; job_send(BLOB_FILE_END, 1); return; }
+        job_send(BLOB_FILE_DATA, n);
+    }
+}
+
+static void job_tick(uint32_t now)
+{
+    if (s_job == JOB_NONE) return;
+    if (!s_job_waiting) { job_step(); return; }
+    if (s_ack_id == s_job_wait) {
+        bool ok = s_ack_ok;
+        s_ack_id = -1;
+        s_job_waiting = false;
+        if (!ok) { job_end(); return; }
+        job_step();
+        return;
+    }
+    if (now - s_job_sent_at > 1500) {
+        if (++s_job_retries > 3) { job_end(); return; }
+        send_blob(s_job_kind, s_job_buf, s_job_len, &s_job_wait);
+        s_job_sent_at = now;
+    }
 }
 
 static bool sd_file_data(const uint8_t *d, size_t n)
@@ -455,8 +625,17 @@ static bool on_blob(uint8_t kind, const uint8_t *data, size_t len)
         sd_give();
         Serial.println("{\"type\":\"sync\",\"state\":\"done\"}");
         return true;
+    case BLOB_FS_LIST: case BLOB_FS_GET: {
+        char rel[96];
+        size_t n = len < sizeof(rel) - 1 ? len : sizeof(rel) - 1;
+        memcpy(rel, data, n);
+        rel[n] = 0;
+        if (kind == BLOB_FS_LIST) job_start_list(rel); else job_start_get(rel);
+        return true;
+    }
 #else
     case BLOB_FILE_BEGIN: case BLOB_FILE_DATA: case BLOB_FILE_END: case BLOB_SYNC_END:
+    case BLOB_FS_LIST: case BLOB_FS_GET:
         return false; // no card on this board
 #endif
     }
@@ -623,6 +802,12 @@ static void handle(const Rx &r)
         s_buttons = m->buttons;
         break;
     }
+    case LINK_ACK: {
+        const LinkAck *a = (const LinkAck *)d;
+        s_ack_ok = a->ok;
+        s_ack_id = a->id;
+        break;
+    }
     case LINK_BLOB: {
         const LinkBlob *b = (const LinkBlob *)d;
         if (!s_reasm.feed(b)) break;
@@ -735,6 +920,7 @@ void loop()
     }
 #ifdef GEEK_SD
     sd_tick(now);
+    job_tick(now);
 #endif
 
     bool online = s_paired && !s_pairing && s_last_rx && now - s_last_rx < 3000;
