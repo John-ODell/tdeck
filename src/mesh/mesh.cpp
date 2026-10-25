@@ -16,9 +16,17 @@ using namespace mt;
 
 // Created in init(): RadioLib's constructor uses the FPU, which is not safe in a
 // global constructor before the scheduler starts (panics under QEMU).
-static SX1262 *s_radio = nullptr;
+// Exposes setRx so the band sweep can re-enter RX without startReceive(), which
+// always drops to STDBY_RC and so restarts the TCXO (5 ms) on every step
+class MeshRadio : public SX1262 {
+public:
+    using SX1262::SX1262;
+    int16_t rx_continuous() { return setRx(RADIOLIB_SX126X_RX_TIMEOUT_INF); }
+};
+static MeshRadio *s_radio = nullptr;
 #define radio (*s_radio)
 static bool s_radio_ok = false;
+static bool s_sweeping = false;
 static volatile bool s_irq = false;
 static bool s_transmitting = false;
 static uint32_t s_tx_started = 0;
@@ -698,7 +706,7 @@ static void service_periodic()
 
 bool init()
 {
-    if (!s_radio) s_radio = new SX1262(new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN));
+    if (!s_radio) s_radio = new MeshRadio(new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN));
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     s_our_num = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
@@ -714,10 +722,66 @@ void apply_settings()
     s_radio_ok = configure_radio();
 }
 
+bool sweep_begin(float bw_khz)
+{
+    if (!s_radio_ok) return false;
+    radio.standby();
+    if (radio.setBandwidth(bw_khz) != RADIOLIB_ERR_NONE) {
+        apply_settings();
+        return false;
+    }
+    radio.calibrateImage(915.0f); // one image calibration for the whole 902-928 MHz band
+    radio.startReceive();          // packet and IRQ params once; steps then only retune
+    s_sweeping = true;
+    return true;
+}
+
+float sweep_rssi(float mhz, uint32_t settle_us)
+{
+    if (!s_sweeping) return -140.0f;
+    // XOSC standby keeps the TCXO running, so a step is retune + RX, ~0.5 ms
+    radio.standby(RADIOLIB_SX126X_STANDBY_XOSC);
+    radio.setFrequency(mhz, true); // skip per-step image calibration
+    radio.rx_continuous();
+    delayMicroseconds(settle_us); // PLL lock and AGC settle
+    float a = radio.getRSSI(false);
+    delayMicroseconds(100);
+    float b = radio.getRSSI(false);
+    return a > b ? a : b;
+}
+
+void sweep_end()
+{
+    if (!s_sweeping) return;
+    s_sweeping = false;
+    apply_settings();
+    s_irq = false;
+}
+
+bool sweeping() { return s_sweeping; }
+
+void debug_rssi()
+{
+    if (!s_radio_ok) { Serial.println("radio not ok"); return; }
+    Serial.printf("mesh rx inst: %.1f %.1f %.1f\n", radio.getRSSI(false), radio.getRSSI(false), radio.getRSSI(false));
+    if (!sweep_begin(125.0f)) { Serial.println("sweep_begin failed"); return; }
+    static const uint32_t settle[] = {300, 500, 800, 1000, 1200, 1500, 2000, 3000};
+    for (uint32_t d : settle) {
+        Serial.printf("settle %5lu us:", (unsigned long)d);
+        for (float f = 903.0f; f < 928.0f; f += 5.0f) Serial.printf(" %.1f", sweep_rssi(f, d));
+        Serial.println();
+    }
+    radio.startReceive();
+    delay(5);
+    Serial.printf("after startReceive: %.1f\n", radio.getRSSI(false));
+    sweep_end();
+    Serial.printf("restored mesh rx inst: %.1f\n", radio.getRSSI(false));
+}
+
 void loop()
 {
     if (!s_radio_ok) return;
-    service_radio();
+    if (!s_sweeping) service_radio();
     service_retries();
     service_held();
     service_periodic();

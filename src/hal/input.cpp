@@ -195,6 +195,7 @@ uint32_t input_last_activity_ms() { return s_last_activity; }
 bool input_keyboard_found() { return s_kb; }
 bool input_touch_found() { return s_touch; }
 void input_set_key_hook(input_key_hook_t hook) { s_hook = hook; }
+void input_inject_key(uint32_t key) { push_key(key); }
 
 void input_set_group(lv_group_t *g)
 {

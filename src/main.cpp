@@ -15,6 +15,7 @@
 #include "mesh/mesh.h"
 #include "hal/gps.h"
 #include "core/storage.h"
+#include "core/console.h"
 
 static uint32_t s_wake_at = 0;
 static bool s_screen_off = false;
@@ -95,6 +96,7 @@ void setup()
     ui_register_app(&app_gps);
     ui_register_app(&app_wifi);
     ui_register_app(&app_ble);
+    ui_register_app(&app_spectrum);
     ui_register_app(&app_notes);
     ui_register_app(&app_files);
     ui_register_app(&app_settings);
@@ -117,6 +119,7 @@ void loop()
     gps_loop();
     update_unread();
     ui_tick();
+    console_poll();
     manage_screen();
     lv_timer_handler();
     delay(s_screen_off ? 10 : 2);
