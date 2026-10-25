@@ -22,6 +22,7 @@ struct Settings {
     bool has_keys;
     // Appended fields: older stored blobs load as a prefix and keep defaults for these
     uint8_t trackball;       // 1 (slow) .. 5 (fast)
+    bool chat_tone;          // a short tone on a new message when its chat is not open
 };
 
 extern Settings settings;
