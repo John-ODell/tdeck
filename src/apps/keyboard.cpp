@@ -170,6 +170,7 @@ static void show(lv_obj_t *view)
             uint32_t m = lv_obj_get_child_cnt(o);
             for (uint32_t j = 0; j < m; j++) {
                 lv_obj_t *c = lv_obj_get_child(o, j);
+                if (lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) continue;
                 if (lv_obj_check_type(c, &lv_dropdown_class) || lv_obj_check_type(c, &lv_btn_class)) lv_group_add_obj(g, c);
             }
         }
@@ -392,13 +393,13 @@ static void build_setup(lv_obj_t *parent)
     lv_obj_set_size(s_dongle_row, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(s_dongle_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(s_dongle_row, 6, 0);
-    s_pair_btn = button(s_dongle_row, LV_SYMBOL_USB "  Pair a dongle", [](lv_event_t *) { enter_pair(); });
-    s_sync_btn = button(s_dongle_row, LV_SYMBOL_UPLOAD "  Sync notes", [](lv_event_t *) {
+    s_pair_btn = button(s_dongle_row, LV_SYMBOL_USB " Pair", [](lv_event_t *) { enter_pair(); });
+    s_sync_btn = button(s_dongle_row, LV_SYMBOL_UPLOAD " Sync notes", [](lv_event_t *) {
         if (!companion::sync_notes()) ui_toast("Dongle is not online");
     });
-    for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) { lv_obj_set_size(b, 0, 32); lv_obj_set_flex_grow(b, 1); }
-
-    s_forget_btn = button(s_setup, LV_SYMBOL_TRASH "  Forget", [](lv_event_t *) {
+    // Forget shares the row so nothing sits below the fold: a focused button scrolling into
+    // view from nowhere looked like something had happened (#163)
+    s_forget_btn = button(s_dongle_row, LV_SYMBOL_TRASH " Forget", [](lv_event_t *) {
         uint32_t now = millis();
         if (!s_forget_at || now - s_forget_at > FORGET_MS) { s_forget_at = now; update_status(); return; }
         s_forget_at = 0;
@@ -406,7 +407,7 @@ static void build_setup(lv_obj_t *parent)
         else { dongle::forget(); ui_toast("Dongle forgotten"); }
         update_status();
     });
-    lv_obj_set_height(s_forget_btn, 32);
+    for (lv_obj_t *b : {s_pair_btn, s_sync_btn, s_forget_btn}) { lv_obj_set_size(b, 0, 32); lv_obj_set_flex_grow(b, 1); }
     lv_obj_set_style_text_color(s_forget_btn, T_DIM, 0);
 }
 
@@ -538,12 +539,19 @@ static void update_status()
                  : "offline: is it plugged in?", companion::status());
     }
     lv_label_set_text(s_status, buf);
-    if (s_target == T_DONGLE) lv_obj_clear_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
+    for (lv_obj_t *b : {s_pair_btn, s_sync_btn}) {
+        if (s_target == T_DONGLE) lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+    }
     if (s_forget_at && millis() - s_forget_at > FORGET_MS) s_forget_at = 0;
+    if (s_forget_at) {
+        snprintf(buf, sizeof(buf), LV_SYMBOL_WARNING " Press Forget again to forget %s.",
+                 s_target == T_BLUETOOTH ? "the Bluetooth hosts" : "this dongle");
+        lv_label_set_text(s_status, buf);
+        lv_obj_set_style_text_color(s_status, T_WARN, 0);
+    } else lv_obj_set_style_text_color(s_status, T_DIM, 0);
     lv_label_set_text(lv_obj_get_child(s_forget_btn, 0),
-                      s_forget_at ? LV_SYMBOL_WARNING "  Press again to forget"
-                      : s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH "  Forget Bluetooth hosts" : LV_SYMBOL_TRASH "  Forget this dongle");
+                      s_forget_at ? LV_SYMBOL_WARNING " Sure?" : s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH " Forget hosts" : LV_SYMBOL_TRASH " Forget");
     lv_obj_set_style_text_color(s_forget_btn, s_forget_at ? T_WARN : T_DIM, 0);
     lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
@@ -563,9 +571,9 @@ static void tick()
     static uint32_t last_status = 0, last_batt = 0;
     if (millis() - last_status > 500) {
         last_status = millis();
-        bool pair_was_hidden = lv_obj_has_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN);
+        bool pair_was_hidden = lv_obj_has_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN);
         update_status();
-        if (!s_in_live && !s_in_pair && pair_was_hidden != lv_obj_has_flag(s_dongle_row, LV_OBJ_FLAG_HIDDEN)) show(s_setup);
+        if (!s_in_live && !s_in_pair && pair_was_hidden != lv_obj_has_flag(s_pair_btn, LV_OBJ_FLAG_HIDDEN)) show(s_setup);
         if (s_in_pair) refresh_pair_list();
     }
     if (millis() - last_batt > 60000) {
