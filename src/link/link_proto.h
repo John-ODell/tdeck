@@ -1,4 +1,6 @@
-// T-Deck <-> USB dongle link over ESP-NOW. Shared by the T-Deck firmware and dongle/.
+// T-Deck <-> USB dongle link over ESP-NOW. This is the original; the dongle firmware in
+// John-ODell/ESP-Geek keeps a copy at firmware/tdeck-dongle/proto/link_proto.h that its
+// tools/sync-proto.sh refreshes from here. Bump LINK_VERSION when the wire format changes.
 //
 // Pairing: an unpaired dongle broadcasts HELLO with its X25519 public key. The T-Deck
 // answers PAIR with its own public key. Both derive the ESP-NOW local master key from
