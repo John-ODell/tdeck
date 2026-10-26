@@ -15,7 +15,7 @@ page unless it is public at the time):
   device, `geek-connected.png` is the dongle's 240×135 screen at 2×. Use them as they are,
   on a dark background, scaled with nearest-neighbour or at an integer multiple so the
   pixel font stays crisp. Every image gets alt text that says what the screen shows.
-- `README.md` and `dongle/README.md` have the per-app detail and the dongle's protocol if
+- `README.md` and `dongle/README.md` (the firmware itself is in the ESP-Geek repo) have the per-app detail and the dongle's protocol if
   you need more than the write-up.
 
 What the page should do:
