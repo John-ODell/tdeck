@@ -11,6 +11,7 @@
 
 static lv_obj_t *s_long, *s_short, *s_chan, *s_preset, *s_power, *s_power_lbl, *s_hops, *s_relay, *s_tone, *s_tone_vol;
 static lv_obj_t *s_prec, *s_bright, *s_tball, *s_timeout, *s_tz, *s_stats;
+static lv_obj_t *s_lock_os, *s_lock_pwr; // the dongle's lock settings, kept by link.cpp (#170)
 
 static const int TZ_VALUES[] = {-300, -360, -420, -480, -540, -600, 0};
 static const char *TZ_OPTS = "Eastern\nCentral\nMountain\nPacific\nAlaska\nHawaii\nUTC";
@@ -98,6 +99,10 @@ static void save_clicked(lv_event_t *)
     settings.screen_timeout_s = TIMEOUTS[lv_dropdown_get_selected(s_timeout)];
     settings.tz_offset_min = TZ_VALUES[lv_dropdown_get_selected(s_tz)];
     settings_save();
+    uint8_t lock_os = lv_dropdown_get_selected(s_lock_os);
+    bool lock_pwr = lv_dropdown_get_selected(s_lock_pwr) == 1;
+    if (lock_os != dongle::lock_os() || lock_pwr != dongle::lock_on_power_off()) // set_lock writes NVS and radios the dongle
+        dongle::set_lock(dongle::lock_after(), lock_os, lock_pwr);
     apply_timezone();
     display_set_brightness(settings.brightness);
 
@@ -199,6 +204,9 @@ static void open(lv_obj_t *parent)
     int tz_idx = 0;
     for (int i = 0; i < 7; i++) if (TZ_VALUES[i] == settings.tz_offset_min) tz_idx = i;
     s_tz = dropdown_row(col, "Time zone", TZ_OPTS, tz_idx);
+    // Which shortcut locks the computer (Ctrl+Cmd+Q or Win+L); "Lock when away" is in the Keyboard app
+    s_lock_os = dropdown_row(col, "Lock shortcut", "Mac\nPC\nReport only", dongle::lock_os());
+    s_lock_pwr = dropdown_row(col, "Power off", "Just sleeps\nLocks computer", dongle::lock_on_power_off());
 
     lv_obj_t *save = lv_btn_create(col);
     lv_obj_set_width(save, LV_PCT(100));
