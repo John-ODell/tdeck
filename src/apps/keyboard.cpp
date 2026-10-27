@@ -10,6 +10,7 @@
 #include "hal/input.h"
 #include "hal/power.h"
 #include "link/link.h"
+#include "link/link_proto.h"
 #include "link/companion.h"
 #include "core/hid_keys.h"
 
@@ -20,6 +21,7 @@ static Ball s_ball = B_MOUSE;
 
 static lv_obj_t *s_setup, *s_live, *s_pairv;
 static lv_obj_t *s_start_btn, *s_target_dd, *s_ball_dd, *s_relay_dd, *s_status, *s_pair_btn, *s_sync_btn, *s_forget_btn;
+static lv_obj_t *s_lock_dd, *s_lock_btn;
 static lv_obj_t *s_term, *s_term_box, *s_live_status, *s_pair_list, *s_pair_note;
 static bool s_in_live = false, s_in_pair = false, s_pairing = false;
 static char s_echo[512];
@@ -312,7 +314,7 @@ static lv_obj_t *column(lv_obj_t *parent)
     lv_obj_remove_style_all(c);
     lv_obj_set_size(c, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(c, 4, 0);
+    lv_obj_set_style_pad_row(c, 3, 0);
     lv_obj_set_style_pad_right(c, 4, 0);
     lv_obj_set_style_text_font(c, &lv_font_montserrat_14, 0);
     lv_obj_add_flag(c, LV_OBJ_FLAG_SCROLLABLE);
@@ -345,7 +347,7 @@ static lv_obj_t *dropdown_row(lv_obj_t *parent, const char *label, const char *o
     lv_dropdown_set_options(dd, opts);
     lv_dropdown_set_selected(dd, sel);
     lv_obj_set_width(dd, 150);
-    lv_obj_set_style_pad_ver(dd, 5, 0); // 28 px rows: the whole page but Forget fits above the fold
+    lv_obj_set_style_pad_ver(dd, 4, 0); // 26 px rows: four of them and the buttons fit above the fold (#170)
     lv_obj_align(dd, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_set_style_text_font(lv_dropdown_get_list(dd), &lv_font_montserrat_14, 0); // the list is not a child
     lv_obj_add_event_cb(dd, cb, LV_EVENT_VALUE_CHANGED, nullptr);
@@ -357,6 +359,25 @@ static lv_obj_t *dropdown_row(lv_obj_t *parent, const char *label, const char *o
 static lv_obj_t *s_dongle_row;      // Pair and Sync side by side, dongle target only
 static uint32_t s_forget_at = 0;    // Forget needs a second press within FORGET_MS (a stray touch once wiped the pairing)
 static const uint32_t FORGET_MS = 4000;
+
+static const uint16_t LOCK_AFTER[] = {0, 10, 20, 60}; // "Lock when away" dropdown rows (#170)
+
+// Lock the computer now: LINK_LOCK over the dongle (it taps the shortcut, or only reports it when
+// the shortcut is "Report only"), the shortcut itself over Bluetooth.
+static void lock_now()
+{
+    uint8_t os = dongle::lock_os();
+    if (s_target == T_DONGLE) {
+        if (!dongle::lock_computer()) ui_toast("Dongle is not online");
+        else ui_toast(os == LINK_LOCK_OS_NONE ? "Lock sent (report only)" : "Lock sent");
+        return;
+    }
+    if (!hid_ble::connected()) { ui_toast("No Bluetooth host connected"); return; }
+    if (os == LINK_LOCK_OS_NONE) { ui_toast("Lock shortcut is Report only (Settings)"); return; }
+    if (os == LINK_LOCK_OS_PC) hid_ble::tap(0x08, 0x0F); // Win+L
+    else hid_ble::tap(0x09, 0x14);                        // Ctrl+Cmd+Q
+    ui_toast("Lock sent");
+}
 
 static void build_setup(lv_obj_t *parent)
 {
@@ -376,6 +397,13 @@ static void build_setup(lv_obj_t *parent)
         companion::set_enabled(lv_dropdown_get_selected(s_relay_dd) == 1);
         if (companion::enabled() && s_target == T_DONGLE) dongle::start();
     });
+    // Lock when away: the dongle locks the computer this long after the T-Deck goes quiet (#168, #170)
+    int lock_idx = 0;
+    for (int i = 0; i < 4; i++) if (LOCK_AFTER[i] == dongle::lock_after()) lock_idx = i;
+    s_lock_dd = dropdown_row(s_setup, "Lock when away", "Off\n10 s\n20 s\n60 s", lock_idx, [](lv_event_t *) {
+        dongle::set_lock(LOCK_AFTER[lv_dropdown_get_selected(s_lock_dd)], dongle::lock_os(), dongle::lock_on_power_off());
+        if (dongle::lock_after() && s_target != T_DONGLE) ui_toast("Lock when away needs the dongle");
+    });
     s_status = lv_label_create(s_setup);
     lv_label_set_long_mode(s_status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_status, LV_PCT(100));
@@ -384,7 +412,7 @@ static void build_setup(lv_obj_t *parent)
 
     // One big touch target: the typing screen itself has touch off, so this is where a thumb goes
     s_start_btn = button(s_setup, LV_SYMBOL_KEYBOARD "   Start typing", [](lv_event_t *) { enter_live(); });
-    lv_obj_set_height(s_start_btn, 50);
+    lv_obj_set_height(s_start_btn, 44);
     lv_obj_set_style_border_width(s_start_btn, 2, 0);
     lv_obj_set_style_text_font(s_start_btn, t_font_mono, 0);
 
@@ -394,9 +422,12 @@ static void build_setup(lv_obj_t *parent)
     lv_obj_set_flex_flow(s_dongle_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(s_dongle_row, 6, 0);
     s_pair_btn = button(s_dongle_row, LV_SYMBOL_USB " Pair", [](lv_event_t *) { enter_pair(); });
-    s_sync_btn = button(s_dongle_row, LV_SYMBOL_UPLOAD " Sync notes", [](lv_event_t *) {
+    s_sync_btn = button(s_dongle_row, LV_SYMBOL_UPLOAD " Sync", [](lv_event_t *) {
         if (!companion::sync_notes()) ui_toast("Dongle is not online");
     });
+    // Lock lives here, not on the typing screen: ESC and then a tap is two deliberate steps,
+    // so a stray key cannot lock the Mac mid-sentence (#170)
+    s_lock_btn = button(s_dongle_row, LV_SYMBOL_EYE_CLOSE " Lock", [](lv_event_t *) { lock_now(); });
     // Forget shares the row so nothing sits below the fold: a focused button scrolling into
     // view from nowhere looked like something had happened (#163)
     s_forget_btn = button(s_dongle_row, LV_SYMBOL_TRASH " Forget", [](lv_event_t *) {
@@ -407,7 +438,7 @@ static void build_setup(lv_obj_t *parent)
         else { dongle::forget(); ui_toast("Dongle forgotten"); }
         update_status();
     });
-    for (lv_obj_t *b : {s_pair_btn, s_sync_btn, s_forget_btn}) { lv_obj_set_size(b, 0, 32); lv_obj_set_flex_grow(b, 1); }
+    for (lv_obj_t *b : {s_pair_btn, s_sync_btn, s_lock_btn, s_forget_btn}) { lv_obj_set_size(b, 0, 32); lv_obj_set_flex_grow(b, 1); }
     lv_obj_set_style_text_color(s_forget_btn, T_DIM, 0);
 }
 
@@ -551,7 +582,7 @@ static void update_status()
         lv_obj_set_style_text_color(s_status, T_WARN, 0);
     } else lv_obj_set_style_text_color(s_status, T_DIM, 0);
     lv_label_set_text(lv_obj_get_child(s_forget_btn, 0),
-                      s_forget_at ? LV_SYMBOL_WARNING " Sure?" : s_target == T_BLUETOOTH ? LV_SYMBOL_TRASH " Forget hosts" : LV_SYMBOL_TRASH " Forget");
+                      s_forget_at ? LV_SYMBOL_WARNING " Sure?" : LV_SYMBOL_TRASH " Forget");
     lv_obj_set_style_text_color(s_forget_btn, s_forget_at ? T_WARN : T_DIM, 0);
     lv_label_set_text_fmt(s_live_status, "%s %s   %s",
                           s_target == T_BLUETOOTH ? LV_SYMBOL_BLUETOOTH : LV_SYMBOL_USB,
