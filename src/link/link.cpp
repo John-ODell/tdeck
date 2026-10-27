@@ -18,6 +18,11 @@ static volatile uint32_t s_old_peer_at = 0; // the paired dongle last spoke anot
 // The packet counter the dongle checks for replays. It is written to NVS in batches of
 // CTR_BATCH, and a boot starts past the last batch, so it never repeats across resets.
 static uint32_t s_ctr = 0, s_ctr_saved = 0;
+
+// Lock-when-away setting (#168); loaded from NVS the first time it is read or sent
+static uint16_t s_lock_after = 0;
+static uint8_t s_lock_os = LINK_LOCK_OS_MAC;
+static bool s_lock_pwr = false, s_lock_set = false, s_lock_loaded = false;
 static const uint32_t CTR_BATCH = 256;
 
 static void save_ctr()
@@ -182,6 +187,67 @@ void bye()
     if (send_ctl(LINK_BYE, 3)) delay(20); // let the last one leave before the radio goes
 }
 
+static void load_lock()
+{
+    if (s_lock_loaded) return;
+    s_lock_loaded = true;
+    Preferences p;
+    p.begin("link", false);
+    s_lock_set = p.getBool("lk_set", false);
+    s_lock_after = p.getUShort("lk_after", 0);
+    s_lock_os = p.getUChar("lk_os", LINK_LOCK_OS_MAC);
+    s_lock_pwr = p.getBool("lk_pwr", false);
+    p.end();
+}
+
+// Three times 10 ms apart like BYE: nothing answers it
+static bool send_lock_cfg()
+{
+    if (!s_running || !s_paired) return false;
+    bool sent = false;
+    for (int i = 0; i < 3; i++) {
+        LinkLockCfg c;
+        link_hdr(&c.h, LINK_LOCK_CFG);
+        c.ctr = next_ctr();
+        c.after = s_lock_after;
+        c.os = s_lock_os;
+        link_tag(s_lmk, &c, offsetof(LinkLockCfg, tag), c.tag);
+        sent |= esp_now_send(s_mac, (const uint8_t *)&c, sizeof(c)) == ESP_OK;
+        delay(10);
+    }
+    return sent;
+}
+
+void set_lock(uint16_t after_s, uint8_t os, bool on_power_off)
+{
+    load_lock();
+    s_lock_after = after_s;
+    s_lock_os = os;
+    s_lock_pwr = on_power_off;
+    s_lock_set = true;
+    Preferences p;
+    p.begin("link", false);
+    p.putBool("lk_set", true);
+    p.putUShort("lk_after", s_lock_after);
+    p.putUChar("lk_os", s_lock_os);
+    p.putBool("lk_pwr", s_lock_pwr);
+    p.end();
+    send_lock_cfg();
+}
+
+uint16_t lock_after() { load_lock(); return s_lock_after; }
+uint8_t lock_os() { load_lock(); return s_lock_os; }
+bool lock_on_power_off() { load_lock(); return s_lock_pwr; }
+
+// Powering off on purpose: LOCK once and no BYE when the setting asks for it, so if that
+// one LOCK is lost the dongle's away timer still locks; otherwise BYE so it does not
+void power_off()
+{
+    load_lock();
+    if (s_lock_pwr) { if (send_ctl(LINK_LOCK, 1)) delay(20); }
+    else bye();
+}
+
 bool lock_computer() { return send_ctl(LINK_LOCK, 1); }
 
 void stop()
@@ -272,6 +338,12 @@ PairState pair_state() { return s_pair; }
 void tick()
 {
     if (!s_running) return;
+    // Offline -> online: the dongle may have been reflashed while away, so give it the
+    // lock setting again, once it has ever been set on this T-Deck (#168)
+    static bool was_online = false;
+    bool now_online = online();
+    if (now_online && !was_online) { load_lock(); if (s_lock_set) send_lock_cfg(); }
+    was_online = now_online;
     // The WiFi and Spectrum apps turn WiFi off when they close, and a scan leaves the radio
     // on another channel; either silences the link. A quiet link brings the radio back and
     // returns to its channel every 2 s until the dongle answers (#132).

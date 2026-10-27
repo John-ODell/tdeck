@@ -39,6 +39,7 @@ enum LinkType : uint8_t {
     LINK_PONG = 5,   // dongle -> T-Deck, encrypted
     LINK_BYE = 6,    // T-Deck -> dongle, encrypted LinkCtl: going quiet on purpose
     LINK_LOCK = 7,   // T-Deck -> dongle, encrypted LinkCtl: lock the computer now
+    LINK_LOCK_CFG = 8, // T-Deck -> dongle, encrypted LinkLockCfg: the lock-when-away setting (#168)
     LINK_TAP = 10,   // T-Deck -> dongle: LinkTap
     LINK_MOUSE = 11, // T-Deck -> dongle: LinkMouse
     LINK_BLOB = 20,  // either way: one part of a LinkBlob (mesh text, files)
@@ -111,6 +112,20 @@ struct __attribute__((packed)) LinkCtl {
     LinkHdr h;
     uint32_t ctr; // T-Deck -> dongle: strictly increasing; 0 from the dongle
     uint8_t tag[LINK_TAG_LEN];
+};
+
+// Lock-when-away, set on the T-Deck and sent to the dongle three times 10 ms apart (nothing
+// answers it) whenever it changes and once each time the link comes back, since the dongle
+// may have been reflashed. A T-Deck that never set it sends nothing, so the dongle keeps its
+// own serial-port setting. Added without a version bump: an older dongle drops it (#168).
+enum LinkLockOs : uint8_t { LINK_LOCK_OS_MAC = 0, LINK_LOCK_OS_PC = 1, LINK_LOCK_OS_NONE = 2 };
+
+struct __attribute__((packed)) LinkLockCfg {
+    LinkHdr h;
+    uint32_t ctr;   // strictly increasing, under the tag, like LinkCtl
+    uint16_t after; // seconds of silence before the dongle locks; 0 = off (the dongle clamps to 5..3600)
+    uint8_t os;     // LinkLockOs: Ctrl+Cmd+Q, Win+L, or report only
+    uint8_t tag[LINK_TAG_LEN]; // over everything before it
 };
 
 struct __attribute__((packed)) LinkTap {
