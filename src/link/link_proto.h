@@ -7,9 +7,14 @@
 // the shared secret, add each other as encrypted peers, and the dongle confirms with an
 // encrypted PAIRED. After that every packet is ESP-NOW encrypted (AES-CCMP) and also
 // carries a truncated HMAC, so a packet from anyone without the key is ignored even if
-// it spoofs the peer's MAC unencrypted. PING, TAP and MOUSE also carry a counter covered
-// by the tag; the dongle drops any counter it has already seen, so a recorded packet
-// cannot be replayed to type or click again.
+// it spoofs the peer's MAC unencrypted. PING, TAP, MOUSE, BYE and LOCK also carry a
+// counter covered by the tag; the dongle drops any counter it has already seen, so a
+// recorded packet cannot be replayed to type, click or lock again.
+//
+// The T-Deck sends BYE before it goes quiet on purpose (link stopped, radio lent to
+// another app, powering off), so a dongle that locks the computer when the T-Deck goes
+// away can tell that silence from the T-Deck leaving. BYE and LOCK were added without a
+// version bump: a dongle that doesn't know them drops them as unknown types.
 //
 // Keys go as taps (press + release on the dongle), so a lost packet can't leave a key
 // stuck down. Mouse packets carry the full button state.
@@ -32,6 +37,8 @@ enum LinkType : uint8_t {
     LINK_PAIRED = 3, // dongle -> T-Deck, encrypted: LinkHdr + tag
     LINK_PING = 4,   // T-Deck -> dongle, encrypted
     LINK_PONG = 5,   // dongle -> T-Deck, encrypted
+    LINK_BYE = 6,    // T-Deck -> dongle, encrypted LinkCtl: going quiet on purpose
+    LINK_LOCK = 7,   // T-Deck -> dongle, encrypted LinkCtl: lock the computer now
     LINK_TAP = 10,   // T-Deck -> dongle: LinkTap
     LINK_MOUSE = 11, // T-Deck -> dongle: LinkMouse
     LINK_BLOB = 20,  // either way: one part of a LinkBlob (mesh text, files)

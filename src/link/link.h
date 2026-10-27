@@ -1,4 +1,4 @@
-// ESP-NOW link to the USB keyboard dongle (see link_proto.h and dongle/).
+// ESP-NOW link to the USB keyboard dongle (see link_proto.h; the dongle is in John-ODell/ESP-Geek).
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
@@ -6,7 +6,8 @@
 namespace dongle {
 
 bool start();               // WiFi STA on LINK_CHANNEL + ESP-NOW; restores the paired dongle
-void stop();
+void stop();                // says BYE first
+void bye();                 // tell the dongle the silence that follows is on purpose (#166)
 void tick();                // keepalive pings, pairing timeouts
 bool running();
 void ble_sharing(bool on);   // Bluetooth is up: WiFi must modem-sleep or the coexistence layer aborts
@@ -26,6 +27,7 @@ PairState pair_state();   // DONE/FAILED hold until pair_listen() or the next pa
 
 bool tap(uint8_t mod, uint8_t usage);
 bool mouse(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel);
+bool lock_computer();       // the dongle types its lock shortcut (set on the dongle, Mac by default)
 
 // Blobs (mesh text, files): sent in parts, answered by the dongle with an ACK
 typedef void (*blob_cb_t)(uint8_t kind, const uint8_t *data, size_t len);

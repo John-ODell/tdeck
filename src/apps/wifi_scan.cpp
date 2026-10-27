@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <algorithm>
+#include "link/link.h"
 
 static lv_obj_t *s_root, *s_list, *s_title;
 static bool s_scanning = false;
@@ -9,6 +10,7 @@ static uint32_t s_started = 0;
 
 static void start_scan()
 {
+    dongle::bye(); // the scan takes the radio off the link's channel
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     WiFi.scanDelete();

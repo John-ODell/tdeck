@@ -3,6 +3,7 @@
 #include "ui/theme.h"
 #include <Arduino.h>
 #include "core/settings.h"
+#include "link/link.h"
 #include "mesh/mesh.h"
 #include "mesh/protocol.h"
 #include "hal/display.h"
@@ -212,6 +213,7 @@ static void open(lv_obj_t *parent)
     lv_label_set_text(lv_label_create(off), LV_SYMBOL_POWER " Power off (click trackball to wake)");
     lv_obj_add_event_cb(off, [](lv_event_t *) {
         mesh::flush_storage();
+        dongle::bye(); // powering off on purpose, not walking away
         power_deep_sleep();
     }, LV_EVENT_CLICKED, nullptr);
     add_focus(off);
