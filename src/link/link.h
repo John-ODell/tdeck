@@ -29,6 +29,14 @@ bool tap(uint8_t mod, uint8_t usage);
 bool mouse(uint8_t buttons, int8_t dx, int8_t dy, int8_t wheel);
 bool lock_computer();       // the dongle types its lock shortcut (set on the dongle, Mac by default)
 
+// Lock-when-away (#168): kept in NVS, sent to the dongle on change and on every reconnect
+// once it has been set on this T-Deck. after_s = 0 turns it off. os is a LinkLockOs.
+void set_lock(uint16_t after_s, uint8_t os, bool on_power_off);
+uint16_t lock_after();      // readable while the link is off
+uint8_t lock_os();
+bool lock_on_power_off();
+void power_off();           // LOCK if lock_on_power_off(), otherwise BYE; call before the power goes
+
 // Blobs (mesh text, files): sent in parts, answered by the dongle with an ACK
 typedef void (*blob_cb_t)(uint8_t kind, const uint8_t *data, size_t len);
 void set_blob_cb(blob_cb_t cb);          // called from tick(), not from the radio task
