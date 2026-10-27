@@ -210,6 +210,7 @@ static void wifi_reset_counts()
 
 static bool wifi_start()
 {
+    dongle::bye(); // the sweep takes the radio off the link's channel
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     wifi_reset_counts();

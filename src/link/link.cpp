@@ -161,9 +161,33 @@ bool start()
     return true;
 }
 
+// BYE and LOCK: a counter under the tag, sent a few times since nothing answers them
+static bool send_ctl(uint8_t type, int times)
+{
+    if (!s_running || !s_paired) return false;
+    bool sent = false;
+    for (int i = 0; i < times; i++) {
+        LinkCtl c;
+        link_hdr(&c.h, type);
+        c.ctr = next_ctr();
+        link_tag(s_lmk, &c, offsetof(LinkCtl, tag), c.tag);
+        sent |= esp_now_send(s_mac, (const uint8_t *)&c, sizeof(c)) == ESP_OK;
+        delay(10);
+    }
+    return sent;
+}
+
+void bye()
+{
+    if (send_ctl(LINK_BYE, 3)) delay(20); // let the last one leave before the radio goes
+}
+
+bool lock_computer() { return send_ctl(LINK_LOCK, 1); }
+
 void stop()
 {
     if (!s_running) return;
+    bye();
     s_running = false;
     s_listen = false;
     esp_now_unregister_recv_cb();
