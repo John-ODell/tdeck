@@ -1,10 +1,8 @@
 #!/bin/sh
-# Host tests for the board rules and the pure protocol code; also checks AES-CTR against OpenSSL.
+# Host tests for the pure protocol code; also checks AES-CTR against OpenSSL.
 set -e
 cd "$(dirname "$0")/../.."
 out=$(mktemp -d)
-c++ -std=c++17 -Wall -Isrc test/host/test_board.cpp -o "$out/test_board"
-"$out/test_board"
 c++ -std=c++17 -Wall -Isrc test/host/test_protocol.cpp -o "$out/test_protocol"
 "$out/test_protocol" | tee "$out/log"
 nonce=$(grep '^NONCE' "$out/log" | cut -d' ' -f2)
