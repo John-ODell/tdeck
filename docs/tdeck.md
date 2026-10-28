@@ -57,8 +57,8 @@ console (T-Deck, 320×240) and from the dongle over USB (GEEK, 240×135, shown a
 The **Keyboard** app turns the T-Deck into a wireless keyboard and trackball mouse, two ways:
 
 - **Bluetooth**: pair "T-Deck Keyboard" from a computer or phone, no PIN.
-- **USB dongle**: a Waveshare ESP32-S3-GEEK (or any ESP32-S3/S2) running the firmware from
-  [ESP-Geek](https://github.com/John-ODell/ESP-Geek) plugs into the computer
+- **USB dongle**: a Waveshare ESP32-S3-GEEK (or any ESP32-S3/S2) running the firmware in
+  [`dongle/`](../dongle/) plugs into the computer
   and types what the T-Deck sends over ESP-NOW. Pairing is an X25519 key exchange; every
   packet after that is AES-CCM encrypted and carries an HMAC tag and a counter, so a
   recorded packet cannot be replayed. Keys travel as press-and-release taps, so a lost
