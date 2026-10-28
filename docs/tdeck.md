@@ -26,7 +26,7 @@ console (T-Deck, 320×240) and from the dongle over USB (GEEK, 240×135, shown a
 - **Relaying** of other nodes' packets, with counts in Settings. Confirmed against two stock
   nodes.
 
-![Chat](screenshots/tdeck-chat.png) ![Nodes](screenshots/tdeck-nodes.png) ![Map](screenshots/tdeck-map.png) ![Map at street level](screenshots/tdeck-map-z14.png)
+![Chat](screenshots/tdeck-chat.png) ![Nodes](screenshots/tdeck-nodes.png)
 
 ### Radio tools
 
@@ -50,7 +50,7 @@ console (T-Deck, 320×240) and from the dongle over USB (GEEK, 240×135, shown a
   waypoint that survives reboots. The T-Deck Plus has no magnetometer, so the heading comes
   from motion.
 
-![GPS](screenshots/tdeck-gps.png) ![Compass](screenshots/tdeck-compass.png)
+![Compass](screenshots/tdeck-compass.png)
 
 ### Keyboard and mouse for the computer
 
