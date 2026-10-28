@@ -1,6 +1,6 @@
 # T-Deck Pro bring-up
 
-Milestones 0 to 2 of the T-Deck Pro port: a board layer shared by both boards, the e-paper driver and display task, keyboard and touch input, and a bring-up program that tests them on the Pro. The plan behind it is in lilygo-A7682E, "reports/TDeck Pro everyday OS plan.md".
+Milestones 0 and 1 of the T-Deck Pro port: a board layer shared by both boards, the e-paper driver and display task, and a bring-up program that tests both on the Pro. The plan behind it is in lilygo-A7682E, "reports/TDeck Pro everyday OS plan.md".
 
 ## The board layer
 
@@ -25,13 +25,7 @@ The factory firmware does the opposite on several of these. It drives every rail
 
 ## The bring-up program
 
-`env:tdeck-pro` builds the board layer, the Pro display and input drivers and `src/bringup/`. It runs the board layer, prints the banner and checks every part, then checks the keyboard and touch chips and leaves a typing screen up. It does not transmit on the radio, and the modem stays off.
-
-| Serial key | Does |
-|---|---|
-| `b` | Run the part checks again |
-| `d` | Run the display test (about 2.5 minutes) |
-| `s` | Print the keyboard and touch counters |
+`env:tdeck-pro` builds only `src/board/` and `src/bringup/` until the Pro has display and input drivers. It runs the board layer, prints the banner and checks every part. It does not transmit on the radio, and the modem stays off. Send `b` over serial to run the checks again.
 
 ```bash
 pio run -e tdeck-pro -t upload
@@ -99,46 +93,3 @@ The display test in the bring-up program stands in for the main loop. It polls e
 A key pressed while a refresh is running waits for that refresh to finish, at most about 650 ms. The keys typed in that time are drawn together in the next one.
 
 The screen content was not checked by eye in this run. The counts show that every change reached the panel and that identical frames did not.
-
-## Keyboard and touch (milestone 2)
-
-`src/hal/input_pro.cpp` implements `input.h` for the Pro, so the Plus apps get the same keys and pointer. The trackball calls do nothing.
-
-- **Keyboard:** `src/hal/tca8418.cpp` drives the TCA8418.
-  - The key-event interrupt is on, on GPIO15. The factory firmware polls with it off.
-  - The main loop drains the chip's 10-event FIFO when INT asserts, and every 50 ms anyway. FIFO overflows are counted.
-  - Unused pins make no events or interrupts. The factory firmware enabled both on floating pins.
-- **Keymap:** `src/hal/keymap_pro.h` is pure code, host-tested in `test/host/test_keymap_pro.cpp`.
-
-  | Layer | Gives |
-  |---|---|
-  | Shift | capitals |
-  | Sym | the symbol printed on each key; Sym+Mic is `0` |
-  | Alt | navigation: E up, X down, S left, F right, Q Esc, T Tab (next), Backspace delete |
-
-  - A modifier works held, tapped once (next key only), or tapped twice (locked until tapped again).
-  - Mic is Esc (back), since the board has no other back key.
-  - Held characters, Backspace and arrows repeat after 450 ms, every 60 ms.
-- **Touch:** `src/hal/touch_cst66xx.cpp` follows LilyGo's CST66xx driver. It reads a report on each INT edge, checks the 0x55-seeded sum and acknowledges. The panel reports portrait 240x320, so no transform is applied.
-- **BOOT button:** a short press is Esc. Held a second, it locks, or unlocks when locked, like the Plus trackball click.
-
-### Result on a V1.1 unit (2026-10-27)
-
-```
-[CHECK] TCA8418 interrupt on   ok
-[CHECK] TCA8418 matrix 4x10    ok
-[CHECK] keyboard INT idle high ok
-[CHECK] touch IC type 0xCACA220E fw 0x01010001 project 0x02511107 res 240x320 tx 10 rx 8 keys 0
-[CHECK] touch info signature   ok
-[CHECK] no touch INT while idle ok
-[CHECK] no key INT while idle  ok
-[INPUT] checks PASS (0 failed)
-```
-
-### Hand check (still to do)
-
-These need someone at the keyboard. Flash `env:tdeck-pro` and open the monitor. Each key prints a `[KEY]` line and each row tap a `[TAP]` line.
-1. Press all 35 keys, then each one with Shift, Sym and Alt held, and compare against the legends.
-2. While the screen is refreshing, type 10 keys as fast as possible. All 10 must appear, and `s` must show 0 overflows and 0 dropped.
-3. Tap the middle of each of the six rows. Each `[TAP]` line must name the row tapped.
-4. Hold BOOT a second to lock, type (nothing should appear), then hold it again to unlock.

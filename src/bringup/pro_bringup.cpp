@@ -2,10 +2,7 @@
 // its own display and input drivers. It runs the board layer, prints the banner, checks
 // that every part answers, and prints a pass/fail line. Send 'b' over serial to repeat.
 //
-// After the part checks it checks the keyboard and touch chips (OS milestone 2), then
-// leaves a typing and tapping screen up for checking every key and row by hand. Serial
-// commands: 'b' repeats the part checks, 'd' runs the display test (OS milestone 1,
-// about 2.5 minutes), 's' prints the input counters.
+// After the part checks it runs the display test (OS milestone 1): see display_test().
 // Nothing is transmitted on the radio and the modem stays off.
 #include <Arduino.h>
 #include <SPI.h>
@@ -15,9 +12,6 @@
 #include "hal/display.h"
 #include "hal/epd_task.h"
 #include "hal/epd_uc8253.h"
-#include "hal/input.h"
-#include "hal/input_pro.h"
-#include "hal/tca8418.h"
 
 static bool sx1262_version(char *ver, size_t n)
 {
@@ -107,7 +101,6 @@ static void pump(uint32_t ms)
         uint32_t n = micros();
         if (s_last_iter_us && n - s_last_iter_us > s_max_gap_us) s_max_gap_us = n - s_last_iter_us;
         s_last_iter_us = n;
-        input_poll();
         lv_timer_handler();
         delay(1);
     }
@@ -127,9 +120,8 @@ static bool pump_until_idle(uint32_t timeout_ms)
 static void display_test()
 {
     Serial.println("[EPD] display test: slow full, single changes, typing burst, 90 s idle");
-    lv_obj_t *prev = lv_scr_act();
-    lv_obj_t *scr = lv_obj_create(nullptr);
-    lv_scr_load(scr);
+    display_init();
+    lv_obj_t *scr = lv_scr_act();
     // The shared lv_conf.h uses the Plus's dark theme; the mono theme is milestone 3.
     lv_obj_set_style_bg_color(scr, lv_color_white(), 0);
     lv_obj_set_style_text_color(scr, lv_color_black(), 0);
@@ -227,129 +219,6 @@ static void display_test()
                   "input gap <= 20 ms (%.1f), idle refreshes <= 1 (%u)\n",
                   singles_drawn, burst_drawn, worst_partial, burst_gap / 1000.0, idle_refreshes);
     Serial.printf("[EPD] %s\n", pass ? "PASS" : "FAIL");
-    lv_scr_load(prev);
-    lv_obj_del(scr);
-}
-
-// ---------- input check (milestone 2) ----------
-
-static lv_obj_t *s_in_status, *s_ta;
-static int s_last_row = -1;
-
-static void style_mono(lv_obj_t *scr)
-{
-    // The shared lv_conf.h uses the Plus's dark theme; the mono theme is milestone 3.
-    lv_obj_set_style_bg_color(scr, lv_color_white(), 0);
-    lv_obj_set_style_text_color(scr, lv_color_black(), 0);
-}
-
-static void log_key(uint8_t code, uint32_t key)
-{
-    if (key >= ' ' && key < 127) Serial.printf("[KEY] code %2u -> '%c'\n", code, (char)key);
-    else Serial.printf("[KEY] code %2u -> key %u\n", code, (unsigned)key);
-}
-
-static void on_row(lv_event_t *e)
-{
-    int row = (int)(intptr_t)lv_event_get_user_data(e);
-    lv_point_t p = {0, 0};
-    lv_indev_t *in = lv_indev_get_act();
-    if (in) lv_indev_get_point(in, &p);
-    s_last_row = row;
-    Serial.printf("[TAP] row %d at x %d y %d\n", row, p.x, p.y);
-}
-
-static void on_lock(bool lock)
-{
-    input_set_locked(lock);
-    Serial.printf("[LOCK] %s\n", lock ? "locked" : "unlocked");
-}
-
-static void print_input_stats()
-{
-    ProInputStats st = input_pro_stats();
-    Serial.printf("[INPUT] keys %u delivered, %u dropped; TCA8418 %u events, %u overflows, %u INT edges, "
-                  "longest wait %u ms\n", st.keys_delivered, st.keys_dropped, st.kb_events, st.kb_overflows,
-                  st.kb_edges, st.max_kb_wait_ms);
-    Serial.printf("[INPUT] touch %u reports, %u checksum errors, %u I2C errors, %u INT edges; blocked %u\n",
-                  st.touch_reports, st.touch_checksum_errors, st.touch_i2c_errors, st.touch_edges,
-                  input_blocked_count());
-}
-
-static void input_checks()
-{
-    int fails = 0;
-    int cfg = tca::read_reg(0x01);
-    check("TCA8418 interrupt on", input_keyboard_found() && cfg == 0x89, fails);
-    check("TCA8418 matrix 4x10", tca::read_reg(0x1D) == 0x0F && tca::read_reg(0x1E) == 0xFF &&
-                                     tca::read_reg(0x1F) == 0x03, fails);
-    check("keyboard INT idle high", digitalRead(BOARD_KEYBOARD_INT) == HIGH, fails);
-    const cst::Info &ti = input_pro_touch_info();
-    Serial.printf("[CHECK] touch IC type 0x%08X fw 0x%08X project 0x%08X res %ux%u tx %u rx %u keys %u\n",
-                  ti.chip_type, ti.fw_ver, ti.project, ti.res_x, ti.res_y, ti.tx, ti.rx, ti.keys);
-    check("touch info signature", input_touch_found(), fails);
-    uint32_t e0 = input_pro_stats().touch_edges, k0 = input_pro_stats().kb_edges;
-    pump(2000);
-    check("no touch INT while idle", input_pro_stats().touch_edges == e0, fails);
-    check("no key INT while idle", input_pro_stats().kb_edges == k0, fails);
-    Serial.printf("[INPUT] checks %s (%d failed)\n", fails ? "FAIL" : "PASS", fails);
-}
-
-static void input_screen()
-{
-    lv_obj_t *scr = lv_scr_act();
-    style_mono(scr);
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "Type, then tap each row");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 4);
-
-    lv_group_t *g = lv_group_create();
-    s_ta = lv_textarea_create(scr);
-    lv_obj_set_size(s_ta, SCREEN_W - 8, 84);
-    lv_obj_align(s_ta, LV_ALIGN_TOP_MID, 0, 24);
-    lv_obj_set_style_bg_color(s_ta, lv_color_white(), 0);
-    lv_obj_set_style_text_color(s_ta, lv_color_black(), 0);
-    lv_obj_set_style_border_color(s_ta, lv_color_black(), 0);
-    lv_obj_set_style_anim_time(s_ta, 0, LV_PART_CURSOR);  // no blinking cursor on e-paper
-    lv_group_add_obj(g, s_ta);
-
-    for (int i = 0; i < 6; i++) {
-        lv_obj_t *b = lv_btn_create(scr);
-        lv_obj_set_size(b, SCREEN_W - 8, 28);
-        lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 114 + i * 32);
-        lv_obj_set_style_bg_color(b, lv_color_white(), 0);
-        lv_obj_set_style_border_color(b, lv_color_black(), 0);
-        lv_obj_set_style_border_width(b, 1, 0);
-        lv_obj_set_style_shadow_width(b, 0, 0);
-        lv_obj_t *l = lv_label_create(b);
-        lv_label_set_text_fmt(l, "Row %d", i + 1);
-        lv_obj_set_style_text_color(l, lv_color_black(), 0);
-        lv_obj_center(l);
-        lv_obj_add_event_cb(b, on_row, LV_EVENT_CLICKED, (void *)(intptr_t)(i + 1));
-    }
-    s_in_status = lv_label_create(scr);
-    lv_obj_align(s_in_status, LV_ALIGN_BOTTOM_LEFT, 4, -2);
-    lv_label_set_text(s_in_status, "");
-
-    input_set_group(g);
-    lv_group_focus_obj(s_ta);
-    input_pro_set_key_log(log_key);
-    input_set_lock_hook(on_lock);
-}
-
-static void update_status()
-{
-    static char last[64] = "";
-    const kb::State &m = input_pro_mods();
-    char buf[64];
-    snprintf(buf, sizeof buf, "%s %s %s  keys %u  lost %u  row %d%s", kb::mod_label(m, kb::MOD_SHIFT),
-             kb::mod_label(m, kb::MOD_SYM), kb::mod_label(m, kb::MOD_ALT), input_pro_stats().keys_delivered,
-             input_pro_stats().kb_overflows + input_pro_stats().keys_dropped, s_last_row,
-             input_locked() ? "  LOCKED" : "");
-    if (strcmp(buf, last)) {
-        strcpy(last, buf);
-        lv_label_set_text(s_in_status, buf);
-    }
 }
 
 void setup()
@@ -359,26 +228,12 @@ void setup()
     while (!Serial && millis() - t < 3000) delay(10);
     board_early_init();
     run_checks();
-    display_init();
-    input_init();
-    input_screen();
-    input_checks();
+    display_test();
 }
 
 void loop()
 {
-    if (Serial.available()) {
-        int c = Serial.read();
-        if (c == 'b') run_checks();
-        if (c == 'd') display_test();
-        if (c == 's') print_input_stats();
-    }
-    uint32_t n = micros();
-    if (s_last_iter_us && n - s_last_iter_us > s_max_gap_us) s_max_gap_us = n - s_last_iter_us;
-    s_last_iter_us = n;
-    input_poll();
-    static uint32_t last_status = 0;
-    if (millis() - last_status > 250) { last_status = millis(); update_status(); }
+    if (Serial.available() && Serial.read() == 'b') run_checks();
     lv_timer_handler();
-    delay(1);
+    delay(5);
 }

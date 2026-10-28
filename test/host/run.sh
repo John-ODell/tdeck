@@ -5,8 +5,6 @@ cd "$(dirname "$0")/../.."
 out=$(mktemp -d)
 c++ -std=c++17 -Wall -Isrc test/host/test_board.cpp -o "$out/test_board"
 c++ -std=c++17 -Wall -Isrc test/host/test_epd_sched.cpp -o "$out/test_epd_sched"
-c++ -std=c++17 -Wall -Isrc test/host/test_keymap_pro.cpp -o "$out/test_keymap_pro"
-"$out/test_keymap_pro"
 "$out/test_epd_sched"
 "$out/test_board"
 c++ -std=c++17 -Wall -Isrc test/host/test_protocol.cpp -o "$out/test_protocol"
