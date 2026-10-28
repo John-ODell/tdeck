@@ -187,9 +187,13 @@ docs/                  the write-up, screenshots, and the protocol and hardware 
 
 Every change is one issue, one pull request, one review and one squash commit.
 
+## License
+
+[GPL-3.0](LICENSE). The firmware links [ESP8266Audio](https://github.com/earlephilhower/ESP8266Audio) (GPL-3.0), so a build of it is GPL either way; the rest of the code is offered under the same terms. LilyGO's TFT_eSPI and SensorLib copies in `lib/` keep their own licenses.
+
 ## What is not done
 
-- Meshtastic 2.8 XEdDSA packet signatures. 2.8 nodes accept unsigned packets by default, so chat with them is expected to work, but none has been on the air here.
+- Meshtastic 2.8 XEdDSA packet signatures are not implemented. Nodes accept unsigned packets by default, and chat with stock nodes (an M5Stack among them) works without them.
 - GPS detection is confirmed on the u-blox M10 only; the L76K path is written from its documentation.
 - Battery voltage was never checked against a meter (the pack is sealed in the case); the divider ratio comes from the schematic (#5).
 - Only the T-Deck Plus has been flashed. The original T-Deck shares the pin map but is untried.
