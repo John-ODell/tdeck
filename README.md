@@ -1,12 +1,23 @@
 # tdeck
 
-A custom firmware for the **LilyGO T-Deck Plus** that talks to stock **Meshtastic** nodes, and a USB dongle that turns the T-Deck into a wireless keyboard, mouse, mesh terminal and shared drive for a computer.
+Two boards, one firmware project:
+
+| | **LilyGO T-Deck Plus** | **Waveshare ESP32-S3-GEEK** |
+|---|---|---|
+| | ![Launcher](docs/screenshots/tdeck-launcher.png) | ![GEEK dongle](docs/screenshots/geek-connected.png) |
+| What it is | A pocket Meshtastic node with a keyboard, trackball, LoRa, GPS, WiFi, BLE and a microSD slot, running this firmware | A USB-A stick with a screen and a TF card slot. Plugged into a computer it is the T-Deck's keyboard, mouse, mesh terminal and shared drive |
+| Firmware | this repo, `tdeck-plus-<version>-merged.bin` | [ESP-Geek](https://github.com/John-ODell/ESP-Geek) `firmware/tdeck-dongle`, `tdeck-dongle-<version>.bin` |
+| Flash | at 0x0, see [Flash it](#flash-it) | at 0x0 with BOOT held while plugging in, see [Flash the GEEK](#flash-the-geek) |
+
+Both images, with checksums and ESP Web Tools manifests for flashing from a browser, are on the [releases page](https://github.com/John-ODell/tdeck/releases/latest).
+
+The T-Deck talks to stock **Meshtastic** nodes on its own. The GEEK is what makes it a desk tool as well: type on the T-Deck and the computer receives it over an encrypted ESP-NOW link, chat on the mesh from a terminal on the computer, and move notes, to-do, music and map tiles through the GEEK's TF card, which is a USB drive on the computer and a folder on the T-Deck at the same time. It can also lock the computer when you walk away with the T-Deck.
 
 It is not a fork of Meshtastic. The radio protocol is reimplemented from the published source (see [docs/research](docs/research/report.md)) on an ESP32-S3 Arduino build with LVGL, so the apps are free to be whatever a pocket deck should have: chat, nodes, an offline map, GPS and compass, WiFi, BLE and LoRa scanners, notes, to-do, files, a timer, music, and the Keyboard app. The look is phosphor green on black.
 
 **Status:** in daily use on a T-Deck Plus since 2026-10-22. Channel text, direct messages, relaying and map tiles are confirmed against stock Meshtastic nodes (#26, #129). What is not done is listed at the [end](#what-is-not-done).
 
-![Launcher](docs/screenshots/tdeck-launcher.png) ![Chat](docs/screenshots/tdeck-chat.png) ![GEEK dongle](docs/screenshots/geek-connected.png)
+![Chat](docs/screenshots/tdeck-chat.png) ![Keyboard](docs/screenshots/tdeck-keyboard.png) ![Typing](docs/screenshots/tdeck-typing.png)
 
 More screens in [`docs/screenshots/`](docs/screenshots/); the longer write-up is [`docs/tdeck.md`](docs/tdeck.md).
 
@@ -76,7 +87,7 @@ What the dongle link carries besides keys:
 
 **Pairing:** plug the dongle in with its screen saying "Pairing" (hold its BOOT button for 2 s to get there from a paired one), then on the T-Deck open **Keyboard**, set Send to **USB dongle** and press **Pair**. **Forget** needs a second press.
 
-**Versions:** the T-Deck owns the link protocol ([`src/link/link_proto.h`](src/link/link_proto.h)) and ESP-Geek keeps a copy. Both ends must be built from the same `LINK_VERSION`; a mismatch is logged on the dongle's serial port and shown on the Keyboard page. The lock feature needs a dongle built from ESP-Geek `main` on or after 2026-10-26; the [`tdeck-dongle-v1.0.0`](https://github.com/John-ODell/ESP-Geek/releases/tag/tdeck-dongle-v1.0.0) release does everything else. See [`dongle/`](dongle/) for the table.
+**Versions:** the T-Deck owns the link protocol ([`src/link/link_proto.h`](src/link/link_proto.h)) and ESP-Geek keeps a copy. Both ends must be built from the same `LINK_VERSION`; a mismatch is logged on the dongle's serial port and shown on the Keyboard page. The dongle image on each tdeck release is built to match that release. See [`dongle/`](dongle/) for the table.
 
 ## Controls
 
@@ -130,7 +141,21 @@ To name a port: `scripts/flash.sh release/<file>-merged.bin /dev/cu.usbmodemXXXX
 
 **Going back to stock Meshtastic:** use [flasher.meshtastic.org](https://flasher.meshtastic.org/) with download mode as above. The LilyGO factory test images are in the [upstream repo](https://github.com/Xinyuan-LilyGO/T-Deck/tree/master/firmware).
 
-The dongle is flashed from ESP-Geek; its README covers a fresh GEEK (BOOT held while plugging in), a running one (`geekflash.py`, keeps the pairing) and the other boards.
+## Flash the GEEK
+
+The release carries `tdeck-dongle-<version>.bin`, the dongle firmware built from [ESP-Geek](https://github.com/John-ODell/ESP-Geek) `firmware/tdeck-dongle` for the Waveshare ESP32-S3-GEEK, with a `-manifest.json` for the browser button and a `.sha256`.
+
+1. Hold the GEEK's **BOOT** button while plugging it into the computer. It shows up as a new serial port and its screen stays dark.
+2. Flash the image at **0x0**:
+
+```bash
+uvx esptool --chip esp32s3 write-flash 0x0 tdeck-dongle-<version>.bin
+```
+
+3. Unplug and plug it back in. The screen says **Pairing**.
+4. On the T-Deck open **Keyboard**, set Send to **USB dongle** and press **Pair**. The GEEK's screen says **Connected** and the T-Deck's status line shows the dongle online.
+
+The image is a factory image: it wipes the GEEK's settings, so a GEEK that was already paired comes back in pairing mode. ESP-Geek's `geekflash.py` reflashes a running GEEK without losing the pairing. Its README also covers the `s3` and `s2` envs for other boards.
 
 ## Map tiles
 

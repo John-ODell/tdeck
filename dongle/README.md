@@ -16,6 +16,7 @@ dongle's serial port and shown on the Keyboard page.
 | T-Deck | `LINK_VERSION` | Dongle release |
 | --- | --- | --- |
 | `main` from `cba755f` (2026-10-25) on | 2 | [`tdeck-dongle-v1.0.0`](https://github.com/John-ODell/ESP-Geek/releases/tag/tdeck-dongle-v1.0.0) or later |
+| [`v0.2.0`](https://github.com/John-ODell/tdeck/releases/tag/v0.2.0) | 2 | `tdeck-dongle-2808d40.bin` on that release (ESP-Geek `main` at 2808d40: lock-when-away, #167/#169) |
 
 After changing `link_proto.h` here: bump `LINK_VERSION`, run `sync-proto.sh` in ESP-Geek,
 rebuild and reflash the dongle, and add a row.
