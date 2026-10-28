@@ -156,14 +156,13 @@ static bool configure_radio()
     s_stats.channel_hash = s_hash;
 
     int8_t power = settings.tx_power > 22 ? 22 : settings.tx_power;
-    // TCXO on DIO3 (1.8 V on the Plus, 2.4 V on the Pro) and DIO2 as RF switch
-    const LoraPins &lp = board_lora_pins();
-    int st = radio.begin(s_stats.freq_mhz, p.bw_khz, p.sf, p.cr, LORA_SYNC_WORD, power, LORA_PREAMBLE, lp.tcxo_v, false);
+    // TCXO on DIO3 at 1.8 V and DIO2 as RF switch, as Meshtastic's t-deck variant
+    int st = radio.begin(s_stats.freq_mhz, p.bw_khz, p.sf, p.cr, LORA_SYNC_WORD, power, LORA_PREAMBLE, 1.8f, false);
     if (st != RADIOLIB_ERR_NONE) {
         Serial.printf("radio.begin failed %d\n", st);
         return false;
     }
-    radio.setDio2AsRfSwitch(lp.dio2_rf_switch);
+    radio.setDio2AsRfSwitch(true);
     radio.setCurrentLimit(140);
     radio.setCRC(2);
     radio.setRxBoostedGainMode(true);
@@ -708,7 +707,7 @@ static void service_periodic()
 
 bool init()
 {
-    if (!s_radio) s_radio = new MeshRadio(new Module(board_lora_pins().cs, board_lora_pins().dio1, board_lora_pins().rst, board_lora_pins().busy));
+    if (!s_radio) s_radio = new MeshRadio(new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN));
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     s_our_num = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
