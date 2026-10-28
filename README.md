@@ -108,7 +108,16 @@ scripts/build_release.sh
 scripts/flash.sh
 ```
 
-`build_release.sh` writes `release/tdeck-plus-<version>-merged.bin` (bootloader, partitions and app; flash at **0x0**) and an app-only `-app.bin` (0x10000, for Launcher/OTA). `flash.sh` flashes the newest merged image at 0x0 and refuses anything else. Writing a merged image at 0x10000 is a known way to brick a T-Deck. Prebuilt images are on the [releases page](https://github.com/John-ODell/tdeck/releases).
+`build_release.sh` writes `release/tdeck-plus-<version>-merged.bin` (bootloader, partitions and app; flash at **0x0**), an app-only `-app.bin` (0x10000, for Launcher/OTA), a `.sha256` and a `-manifest.json`. `flash.sh` flashes the newest merged image at 0x0 and refuses anything else. Writing a merged image at 0x10000 is a known way to brick a T-Deck. Prebuilt images are on the [releases page](https://github.com/John-ODell/tdeck/releases).
+
+**From the browser:** the manifest is for [ESP Web Tools](https://esphome.github.io/esp-web-tools/). Put the merged image and the manifest in the same folder on any web site and add
+
+```html
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<esp-web-install-button manifest="tdeck-plus-v0.2.0-manifest.json"></esp-web-install-button>
+```
+
+Chrome or Edge on a computer, a data cable, and the download-mode steps below if it does not connect. GitHub's release downloads do not allow cross-site fetches, so the files have to be copied to the site rather than linked from the release.
 
 **If flashing can't connect** (common when Meshtastic or another firmware is running), enter download mode:
 1. Turn the T-Deck off (left-side switch).
