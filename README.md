@@ -6,7 +6,7 @@ Two boards, one firmware project:
 |---|---|---|
 | | ![Launcher](docs/screenshots/tdeck-launcher.png) | ![GEEK dongle](docs/screenshots/geek-connected.png) |
 | What it is | A pocket Meshtastic node with a keyboard, trackball, LoRa, GPS, WiFi, BLE and a microSD slot, running this firmware | A USB-A stick with a screen and a TF card slot. Plugged into a computer it is the T-Deck's keyboard, mouse, mesh terminal and shared drive |
-| Firmware | this repo, `tdeck-plus-<version>-merged.bin` | [ESP-Geek](https://github.com/John-ODell/ESP-Geek) `firmware/tdeck-dongle`, `tdeck-dongle-<version>.bin` |
+| Firmware | `src/`, `tdeck-plus-<version>-merged.bin` | [`dongle/`](dongle/), `tdeck-dongle-<version>.bin` |
 | Flash | at 0x0, see [Flash it](#flash-it) | at 0x0 with BOOT held while plugging in, see [Flash the GEEK](#flash-the-geek) |
 
 Both images, with checksums and ESP Web Tools manifests for flashing from a browser, are on the [releases page](https://github.com/John-ODell/tdeck/releases/latest).
@@ -32,7 +32,7 @@ This is built and tested with two boards:
 
 The original T-Deck (no GPS, no battery) uses the same pin map and should run the same image, but only the Plus has been tried.
 
-The dongle firmware lives in [John-ODell/ESP-Geek](https://github.com/John-ODell/ESP-Geek) under `firmware/tdeck-dongle`, with a PlatformIO env per board:
+The dongle firmware is [`dongle/`](dongle/), a PlatformIO project of its own in this repo, with an env per board:
 
 | Env | Board | Gets |
 |---|---|---|
@@ -87,7 +87,7 @@ What the dongle link carries besides keys:
 
 **Pairing:** plug the dongle in with its screen saying "Pairing" (hold its BOOT button for 2 s to get there from a paired one), then on the T-Deck open **Keyboard**, set Send to **USB dongle** and press **Pair**. **Forget** needs a second press.
 
-**Versions:** the T-Deck owns the link protocol ([`src/link/link_proto.h`](src/link/link_proto.h)) and ESP-Geek keeps a copy. Both ends must be built from the same `LINK_VERSION`; a mismatch is logged on the dongle's serial port and shown on the Keyboard page. The dongle image on each tdeck release is built to match that release. See [`dongle/`](dongle/) for the table.
+**Versions:** both halves include the same [`src/link/link_proto.h`](src/link/link_proto.h), so a release's two images always match. Mixing builds is fine as long as `LINK_VERSION` is the same; a mismatch is logged on the dongle's serial port and shown on the Keyboard page.
 
 ## Controls
 
@@ -143,7 +143,7 @@ To name a port: `scripts/flash.sh release/<file>-merged.bin /dev/cu.usbmodemXXXX
 
 ## Flash the GEEK
 
-The release carries `tdeck-dongle-<version>.bin`, the dongle firmware built from [ESP-Geek](https://github.com/John-ODell/ESP-Geek) `firmware/tdeck-dongle` for the Waveshare ESP32-S3-GEEK, with a `-manifest.json` for the browser button and a `.sha256`.
+The release carries `tdeck-dongle-<version>.bin`, the companion firmware from [`dongle/`](dongle/) built for the Waveshare ESP32-S3-GEEK, with a `-manifest.json` for the browser button and a `.sha256`. `scripts/build_release.sh` builds it next to the T-Deck image; `cd dongle && pio run -e geek` builds it alone.
 
 1. Hold the GEEK's **BOOT** button while plugging it into the computer. It shows up as a new serial port and its screen stays dark.
 2. Flash the image at **0x0**:
@@ -155,7 +155,7 @@ uvx esptool --chip esp32s3 write-flash 0x0 tdeck-dongle-<version>.bin
 3. Unplug and plug it back in. The screen says **Pairing**.
 4. On the T-Deck open **Keyboard**, set Send to **USB dongle** and press **Pair**. The GEEK's screen says **Connected** and the T-Deck's status line shows the dongle online.
 
-The image is a factory image: it wipes the GEEK's settings, so a GEEK that was already paired comes back in pairing mode. ESP-Geek's `geekflash.py` reflashes a running GEEK without losing the pairing. Its README also covers the `s3` and `s2` envs for other boards.
+The image is a factory image: it wipes the GEEK's settings, so a GEEK that was already paired comes back in pairing mode. `dongle/tools/geekflash.py` reflashes a running GEEK without losing the pairing, and [`dongle/README.md`](dongle/README.md) covers the `s3` and `s2` envs for other boards.
 
 ## Map tiles
 
@@ -215,7 +215,7 @@ src/ui/                launcher, status bar, toasts, helpers
 src/apps/              one file per app
 lib/                   LilyGO's preconfigured TFT_eSPI and SensorLib (don't replace with registry copies)
 tools/meshterm.py      the computer as a Meshtastic terminal through the dongle
-dongle/                which dongle release goes with which T-Deck build
+dongle/                the GEEK companion firmware: its own PlatformIO project, board support, flash and screenshot tools
 docs/                  the write-up, screenshots, and the protocol and hardware research
 ```
 

@@ -1,0 +1,7 @@
+{
+  "name": "Geek",
+  "version": "0.1.0",
+  "description": "Waveshare ESP32-S3-GEEK board support: pins, the screen as a sprite, USB identity, the TF card as a USB drive",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
