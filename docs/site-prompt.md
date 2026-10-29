@@ -38,7 +38,7 @@ Rules:
 - Facts come from the repo only. Do not invent features, numbers or dates. If you want a
   count (pull requests, apps, lines), count it with `gh` or `git` and say so in a comment
   in the page source.
-- No AI attribution anywhere on the page or in the commit: the work is John's.
+- The page and the commit are John's, with no extra trailers or footers.
 - Follow the site's own commit and pull request rules; if it uses the github-bullseye
   recipe, that means an issue, a pull request, a review and a squash merge for this page.
 - When the page is up, reply with its URL and a one-line list of which screenshots you
